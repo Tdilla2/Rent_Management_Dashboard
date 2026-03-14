@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Invoice {{ invoice.invoice_number }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body p-5">
+                <div class="text-center mb-4">
+                    <h3>{{ settings.company_name }}</h3>
+                    <p class="text-muted">{{ settings.company_address }}</p>
+                </div>
+
+                <h2 class="text-primary mb-4">INVOICE</h2>
+
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <p><strong>Invoice #:</strong> {{ invoice.invoice_number }}</p>
+                        <p><strong>Invoice Date:</strong> {{ invoice.invoice_date }}</p>
+                        <p><strong>Due Date:</strong> {{ invoice.due_date }}</p>
+                        <p><strong>Period:</strong> {{ invoice.period }}</p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Renter:</strong> {{ invoice.name }}</p>
+                        <p><strong>Unit/Lot:</strong> {{ invoice.unit }}</p>
+                        <p><strong>Monthly Rent:</strong> ${{ "{:,.2f}".format(invoice.monthly_rent) }}</p>
+                        <p><strong>Phone:</strong> {{ invoice.phone }}</p>
+                        <p><strong>Email:</strong> {{ invoice.email }}</p>
+                    </div>
+                </div>
+
+                <table class="table">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Description</th>
+                            <th class="text-center">Qty</th>
+                            <th class="text-end">Unit Price</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.description }}</td>
+                            <td class="text-center">{{ item.qty }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.unit_price) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.qty * item.unit_price) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" class="text-end"><strong>Subtotal</strong></td>
+                            <td class="text-end">${{ "{:,.2f}".format(subtotal) }}</td>
+                        </tr>
+                        <tr class="table-primary">
+                            <td colspan="3" class="text-end"><strong>TOTAL DUE</strong></td>
+                            <td class="text-end"><strong>${{ "{:,.2f}".format(subtotal) }}</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                {% if invoice.notes %}
+                <div class="mt-4">
+                    <p><strong>Notes:</strong></p>
+                    <p class="text-muted">{{ invoice.notes }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="mt-3 no-print">
+            <button onclick="window.print()" class="btn btn-outline-primary"><i class="bi bi-printer"></i> Print / Save PDF</button>
+            <a href="{{ url_for('invoices_list') }}" class="btn btn-secondary">Back</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

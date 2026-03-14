@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Payments - {{ renter.name }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-cash"></i> Payments - {{ renter.name }} (Unit {{ renter.unit }})</h5>
+                <span class="badge bg-light text-dark">Rent: ${{ "{:,.0f}".format(renter.monthly_rent) }}/mo</span>
+            </div>
+            <div class="card-body">
+                <div class="mb-3 d-flex gap-2 align-items-center">
+                    <strong>Phone:</strong> {{ renter.phone }}
+                    <strong class="ms-3">Email:</strong> {{ renter.email }}
+                </div>
+                <form method="post">
+                    <input type="hidden" name="year" value="{{ year }}">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Amount Paid ($)</th>
+                                <th>Fees ($)</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in payments %}
+                            <tr>
+                                <td><strong>{{ p.month }}</strong></td>
+                                <td><input type="number" name="amt_{{ p.month_num }}" class="form-control form-control-sm" step="0.01" value="{{ p.amt }}" style="width:120px"></td>
+                                <td><input type="number" name="fee_{{ p.month_num }}" class="form-control form-control-sm" step="0.01" value="{{ p.fee }}" style="width:120px"></td>
+                                <td>
+                                    <span class="badge {% if p.status == 'Paid' %}bg-success{% elif p.status == 'Unpaid' %}bg-danger{% elif p.status == 'Partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                        {{ p.status }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save Payments</button>
+                        <a href="{{ url_for('renters_list', year=year) }}" class="btn btn-secondary">Back</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

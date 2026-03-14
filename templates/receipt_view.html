@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Receipt {{ receipt.receipt_number }}{% endblock %}
+{% block content %}
+<style>
+    @media print {
+        @page { size: letter; margin: 0.5in; }
+        body { font-size: 12px !important; }
+        .receipt-card { box-shadow: none !important; border: none !important; }
+        .receipt-card .card-body { padding: 0 !important; }
+        .receipt-header h4 { font-size: 16px !important; }
+        .receipt-header p { font-size: 11px !important; margin-bottom: 2px !important; }
+        .receipt-title { font-size: 18px !important; margin-bottom: 8px !important; }
+        .receipt-info p { margin-bottom: 2px !important; font-size: 12px !important; }
+        .receipt-table { font-size: 12px !important; }
+        .receipt-table th, .receipt-table td { padding: 4px 8px !important; }
+        .receipt-sig { margin-top: 20px !important; }
+        .receipt-sig p { margin-bottom: 4px !important; }
+        .receipt-thanks { margin-top: 10px !important; }
+    }
+</style>
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card receipt-card">
+            <div class="card-body p-4">
+                <div class="text-center receipt-header mb-3">
+                    <h4 class="mb-1">{{ settings.company_name }}</h4>
+                    <p class="text-muted mb-0">{{ settings.company_address }}</p>
+                </div>
+
+                <h3 class="text-success receipt-title mb-3">PAYMENT RECEIPT</h3>
+
+                <div class="row mb-3 receipt-info">
+                    <div class="col-6">
+                        <p><strong>Receipt #:</strong> {{ receipt.receipt_number }}</p>
+                        {% if receipt.invoice_ref %}
+                        <p><strong>Invoice #:</strong> {{ receipt.invoice_ref }}</p>
+                        {% endif %}
+                        <p><strong>Payment Date:</strong> {{ receipt.payment_date }}</p>
+                        <p><strong>Payment Method:</strong> {{ receipt.payment_method }}</p>
+                        <p><strong>Month:</strong> {{ receipt.month }}</p>
+                    </div>
+                    <div class="col-6">
+                        <p><strong>Renter:</strong> {{ receipt.name }}</p>
+                        <p><strong>Unit/Lot:</strong> {{ receipt.unit }}</p>
+                        <p><strong>Monthly Rent:</strong> ${{ "{:,.2f}".format(receipt.monthly_rent) }}</p>
+                        <p><strong>Phone:</strong> {{ receipt.phone }}</p>
+                        <p><strong>Email:</strong> {{ receipt.email }}</p>
+                    </div>
+                </div>
+
+                <table class="table table-sm receipt-table mb-2">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Description</th>
+                            <th>Period</th>
+                            <th class="text-end">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.description }}</td>
+                            <td>{{ item.period }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-success">
+                            <td colspan="2" class="text-end"><strong>This Payment</strong></td>
+                            <td class="text-end"><strong>${{ "{:,.2f}".format(total) }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end"><strong>Total Paid This Month</strong></td>
+                            <td class="text-end"><strong>${{ "{:,.2f}".format(total_paid_month) }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end">Remaining Balance</td>
+                            <td class="text-end">
+                                {% set balance = receipt.monthly_rent + fees_month - total_paid_month %}
+                                {% if balance > 0 %}
+                                <span class="text-danger"><strong>${{ "{:,.2f}".format(balance) }}</strong></span>
+                                {% else %}
+                                <span class="text-success"><strong>$0.00</strong></span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end"><strong>Payment Status</strong></td>
+                            <td class="text-end">
+                                {% if total_paid_month >= receipt.monthly_rent + fees_month %}
+                                <span class="badge bg-success">Paid in Full</span>
+                                {% elif total_paid_month > 0 %}
+                                <span class="badge bg-warning text-dark">Partial - ${{ "{:,.2f}".format(receipt.monthly_rent + fees_month - total_paid_month) }} remaining</span>
+                                {% else %}
+                                <span class="badge bg-danger">Unpaid</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+
+                <div class="receipt-sig mt-3">
+                    <p>Authorized Signature: ___________________________</p>
+                    <p>Date: _______________</p>
+                </div>
+                <p class="text-center text-muted receipt-thanks"><em>Thank you for your payment!</em></p>
+            </div>
+        </div>
+        <div class="mt-3 no-print">
+            <button onclick="window.print()" class="btn btn-outline-success"><i class="bi bi-printer"></i> Print / Save PDF</button>
+            <a href="{{ url_for('receipts_list') }}" class="btn btn-secondary">Back</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

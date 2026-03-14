@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if renter else 'Add' }} Renter{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">{{ 'Edit' if renter else 'Add New' }} Renter</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" name="name" class="form-control" value="{{ renter.name if renter else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Unit/Lot</label>
+                        <input type="text" name="unit" class="form-control" value="{{ renter.unit if renter else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Monthly Rent ($)</label>
+                        <input type="number" name="monthly_rent" class="form-control" step="0.01" value="{{ renter.monthly_rent if renter else '0' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Phone</label>
+                        <input type="text" name="phone" class="form-control" value="{{ renter.phone if renter else '' }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control" value="{{ renter.email if renter else '' }}">
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">{{ 'Update' if renter else 'Add' }} Renter</button>
+                        <a href="{{ url_for('renters_list') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Renters - Renter Management{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-people"></i> Renter Management - Annual Tracker ({{ year }})</h3>
+    <div class="d-flex gap-2 no-print">
+        <form class="d-flex gap-2">
+            <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:100px">
+            <button class="btn btn-sm btn-primary">Go</button>
+        </form>
+        <a href="{{ url_for('add_renter') }}" class="btn btn-sm btn-success"><i class="bi bi-plus-lg"></i> Add Renter</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body table-responsive">
+        <table class="table table-sm table-hover mb-0" style="font-size:0.85rem;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Unit</th>
+                    <th>Rent</th>
+                    {% for m in months %}
+                    <th class="text-center">{{ m }}</th>
+                    {% endfor %}
+                    <th class="text-center">Total Paid</th>
+                    <th class="text-center">Balance</th>
+                    <th class="no-print">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rd in renter_data %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ rd.renter.name }}</strong></td>
+                    <td>{{ rd.renter.unit }}</td>
+                    <td>${{ "{:,.0f}".format(rd.renter.monthly_rent) }}</td>
+                    {% for mp in rd.months %}
+                    <td class="text-center {% if mp.status == 'Paid' %}status-paid{% elif mp.status == 'Unpaid' %}status-unpaid{% elif mp.status == 'Partial' %}status-partial{% else %}status-none{% endif %}">
+                        {% if mp.status != '--' %}${{ "{:,.0f}".format(mp.amt) }}{% else %}--{% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="text-center"><strong>${{ "{:,.0f}".format(rd.total_paid) }}</strong></td>
+                    <td class="text-center {% if rd.balance > 0 %}text-danger{% else %}text-success{% endif %}">
+                        <strong>${{ "{:,.0f}".format(rd.balance) }}</strong>
+                    </td>
+                    <td class="no-print">
+                        <div class="btn-group">
+                            <a href="{{ url_for('manage_payments', renter_id=rd.renter.id, year=year) }}" class="btn btn-sm btn-outline-primary btn-action" title="Payments"><i class="bi bi-cash"></i></a>
+                            <a href="{{ url_for('edit_renter', renter_id=rd.renter.id) }}" class="btn btn-sm btn-outline-secondary btn-action" title="Edit"><i class="bi bi-pencil"></i></a>
+                            <form method="post" action="{{ url_for('delete_renter', renter_id=rd.renter.id) }}" style="display:inline" onsubmit="return confirm('Delete this renter?')">
+                                <button class="btn btn-sm btn-outline-danger btn-action" title="Delete"><i class="bi bi-trash"></i></button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

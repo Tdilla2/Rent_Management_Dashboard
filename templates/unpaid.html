@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Unpaid List{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-exclamation-triangle"></i> Unpaid List - {{ months[month-1] }} {{ year }}</h3>
+    <form class="d-flex gap-2 no-print">
+        <select name="month" class="form-select form-select-sm" style="width:120px">
+            {% for i in range(12) %}
+            <option value="{{ i+1 }}" {% if i+1 == month %}selected{% endif %}>{{ months[i] }}</option>
+            {% endfor %}
+        </select>
+        <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:100px">
+        <button class="btn btn-sm btn-primary">Filter</button>
+    </form>
+</div>
+
+{% set counts = {'paid': 0, 'unpaid': 0, 'partial': 0} %}
+<div class="card">
+    <div class="card-body table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Renter Name</th>
+                    <th>Unit/Lot</th>
+                    <th>Monthly Rent</th>
+                    <th>Amt Paid</th>
+                    <th>Fees</th>
+                    <th>Status</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in unpaid %}
+                <tr class="{% if u.status == 'Unpaid' %}table-danger{% elif u.status == 'Partial' %}table-warning{% elif u.status == 'Paid' %}table-success{% endif %}">
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ u.renter.name }}</strong></td>
+                    <td>{{ u.renter.unit }}</td>
+                    <td>${{ "{:,.0f}".format(u.renter.monthly_rent) }}</td>
+                    <td>${{ "{:,.0f}".format(u.amt) }}</td>
+                    <td>${{ "{:,.0f}".format(u.fee) }}</td>
+                    <td>
+                        <span class="badge {% if u.status == 'Paid' %}bg-success{% elif u.status == 'Unpaid' %}bg-danger{% elif u.status == 'Partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                            {{ u.status }}
+                        </span>
+                    </td>
+                    <td>{{ u.renter.email }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer">
+        <div class="d-flex gap-4">
+            <span><span class="badge bg-danger">{{ unpaid|selectattr('status','equalto','Unpaid')|list|length }}</span> Unpaid</span>
+            <span><span class="badge bg-warning text-dark">{{ unpaid|selectattr('status','equalto','Partial')|list|length }}</span> Partial</span>
+            <span><span class="badge bg-success">{{ unpaid|selectattr('status','equalto','Paid')|list|length }}</span> Paid</span>
+        </div>
+    </div>
+</div>
+{% endblock %}

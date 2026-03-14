@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Create Invoice{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="bi bi-file-earmark-text"></i> Create Invoice</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Invoice #</label>
+                            <input type="text" name="invoice_number" class="form-control" value="{{ next_num }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Select Renter</label>
+                            <select name="renter_id" class="form-select" required id="renterSelect">
+                                <option value="">-- Select --</option>
+                                {% for r in renters %}
+                                <option value="{{ r.id }}" data-rent="{{ r.monthly_rent }}" data-unit="{{ r.unit }}">{{ r.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Invoice Date</label>
+                            <input type="date" name="invoice_date" class="form-control">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Due Date</label>
+                            <input type="date" name="due_date" class="form-control">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Period</label>
+                            <input type="text" name="period" class="form-control" placeholder="e.g. March 2025">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Additional Fee</label>
+                            <select name="fee_description" class="form-select" id="feeSelect" onchange="updateFeeAmount()">
+                                <option value="" data-amount="0">-- None --</option>
+                                {% for fee in fee_types %}
+                                <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }} - ${{ "{:,.2f}".format(fee.amount) }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Fee Amount ($)</label>
+                            <input type="number" name="extra_fee" id="feeAmount" class="form-control" step="0.01" value="0">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea name="notes" class="form-control" rows="2">Payment is due by the due date. Late fees may apply for late payments.</textarea>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Create Invoice</button>
+                        <a href="{{ url_for('invoices_list') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function updateFeeAmount() {
+    const sel = document.getElementById('feeSelect');
+    const amt = sel.options[sel.selectedIndex].getAttribute('data-amount');
+    document.getElementById('feeAmount').value = parseFloat(amt) || 0;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Renter Management{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-speedometer2"></i> Dashboard - Monthly Overview ({{ year }})</h3>
+    <form class="d-flex gap-2 no-print">
+        <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:100px">
+        <button class="btn btn-sm btn-primary">Go</button>
+    </form>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-value text-primary">${{ "{:,.0f}".format(totals.expected) }}</div>
+            <div class="stat-label">Expected Revenue</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-value text-success">${{ "{:,.0f}".format(totals.collected) }}</div>
+            <div class="stat-label">Collected</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-value text-danger">${{ "{:,.0f}".format(totals.outstanding) }}</div>
+            <div class="stat-label">Outstanding</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card stat-card">
+            <div class="stat-value text-info">{{ "{:.1f}".format(totals.rate) }}%</div>
+            <div class="stat-label">Collection Rate</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    {% for d in monthly_data %}
+                    <th class="text-center">{{ d.month }}</th>
+                    {% endfor %}
+                    <th class="text-center">TOTAL</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Expected Revenue</strong></td>
+                    {% for d in monthly_data %}<td class="text-center">${{ "{:,.0f}".format(d.expected) }}</td>{% endfor %}
+                    <td class="text-center"><strong>${{ "{:,.0f}".format(totals.expected) }}</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Collected</strong></td>
+                    {% for d in monthly_data %}<td class="text-center text-success">${{ "{:,.0f}".format(d.collected) }}</td>{% endfor %}
+                    <td class="text-center text-success"><strong>${{ "{:,.0f}".format(totals.collected) }}</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Fees Charged</strong></td>
+                    {% for d in monthly_data %}<td class="text-center">${{ "{:,.0f}".format(d.fees) }}</td>{% endfor %}
+                    <td class="text-center"><strong>${{ "{:,.0f}".format(totals.fees) }}</strong></td>
+                </tr>
+                <tr>
+                    <td><strong>Outstanding</strong></td>
+                    {% for d in monthly_data %}<td class="text-center text-danger">${{ "{:,.0f}".format(d.outstanding) }}</td>{% endfor %}
+                    <td class="text-center text-danger"><strong>${{ "{:,.0f}".format(totals.outstanding) }}</strong></td>
+                </tr>
+                <tr>
+                    <td><strong># Paid</strong></td>
+                    {% for d in monthly_data %}<td class="text-center"><span class="badge bg-success">{{ d.paid }}</span></td>{% endfor %}
+                    <td class="text-center"><span class="badge bg-success">{{ totals.paid }}</span></td>
+                </tr>
+                <tr>
+                    <td><strong># Unpaid</strong></td>
+                    {% for d in monthly_data %}<td class="text-center"><span class="badge bg-danger">{{ d.unpaid }}</span></td>{% endfor %}
+                    <td class="text-center"><span class="badge bg-danger">{{ totals.unpaid }}</span></td>
+                </tr>
+                <tr>
+                    <td><strong># Partial</strong></td>
+                    {% for d in monthly_data %}<td class="text-center"><span class="badge bg-warning text-dark">{{ d.partial }}</span></td>{% endfor %}
+                    <td class="text-center"><span class="badge bg-warning text-dark">{{ totals.partial }}</span></td>
+                </tr>
+                <tr>
+                    <td><strong>Collection Rate</strong></td>
+                    {% for d in monthly_data %}<td class="text-center">{{ "{:.1f}".format(d.rate) }}%</td>{% endfor %}
+                    <td class="text-center"><strong>{{ "{:.1f}".format(totals.rate) }}%</strong></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
