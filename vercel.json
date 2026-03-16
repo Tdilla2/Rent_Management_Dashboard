@@ -10,5 +10,11 @@
       "src": "/(.*)",
       "dest": "api/index.py"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/generate-invoices",
+      "schedule": "0 6 1 * *"
+    }
   ]
 }

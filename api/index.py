@@ -1300,6 +1300,70 @@ def api_remaining_balance():
     })
 
 
+# ── CRON JOBS ──
+
+@app.route('/api/cron/generate-invoices', methods=['GET'])
+def cron_generate_invoices():
+    # Vercel sends the CRON_SECRET in the Authorization header
+    secret = os.environ.get('CRON_SECRET', '')
+    auth = request.headers.get('Authorization', '')
+    if secret and auth != f'Bearer {secret}':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    today = date.today()
+    month = today.month
+    year = today.year
+
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    period = f"{FULL_MONTHS[month-1]} {year}"
+    invoice_date = f"{year}-{month:02d}-01"
+    due_date = f"{year}-{month:02d}-05"
+
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY id")
+    renters = cur.fetchall()
+
+    num = get_next_invoice_number(cur)
+    created = 0
+    skipped = 0
+
+    for renter in renters:
+        cur.execute(
+            "SELECT id FROM invoices WHERE renter_id=%s AND period=%s AND auto_generated=TRUE",
+            (renter['id'], period)
+        )
+        if cur.fetchone():
+            skipped += 1
+            continue
+
+        inv_num = f"INV-{num:04d}"
+        cur.execute(
+            """INSERT INTO invoices
+               (invoice_number, renter_id, invoice_date, due_date, period, notes,
+                auto_generated, month_year)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (inv_num, renter['id'], invoice_date, due_date, period,
+             f"Payment due by {due_date}. A 10% late fee plus $75 magistrate fee applies on day 6. An additional 10% applies on day 10.",
+             True, f"{year}-{month:02d}")
+        )
+        cur.execute(
+            "SELECT id FROM invoices WHERE invoice_number=%s", (inv_num,)
+        )
+        invoice_id = cur.fetchone()['id']
+        cur.execute(
+            "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+            (invoice_id, 'Monthly Rent', 1, float(renter['monthly_rent']))
+        )
+        num += 1
+        created += 1
+
+    conn.commit()
+    conn.close()
+    return jsonify({'status': 'ok', 'period': period, 'created': created, 'skipped': skipped})
+
+
 # Initialize database tables on first request
 _db_initialized = False
 
