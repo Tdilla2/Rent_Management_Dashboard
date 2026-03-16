@@ -22,7 +22,7 @@
                     <div class="col-md-6">
                         <p><strong>Renter:</strong> {{ invoice.name }}</p>
                         <p><strong>Unit/Lot:</strong> {{ invoice.unit }}</p>
-                        <p><strong>Monthly Rent:</strong> ${{ "{:,.2f}".format(invoice.monthly_rent) }}</p>
+                        <p><strong>Monthly Rent:</strong> ${{ "{:,.2f}".format(invoice.monthly_rent | float) }}</p>
                         <p><strong>Phone:</strong> {{ invoice.phone }}</p>
                         <p><strong>Email:</strong> {{ invoice.email }}</p>
                     </div>
@@ -53,11 +53,14 @@
                     </thead>
                     <tbody>
                         {% for item in items %}
-                        <tr {% if 'Late Fee' in item.description or 'Magistrate' in item.description %}class="table-warning"{% endif %}>
-                            <td>{{ item.description }}</td>
-                            <td class="text-center">{{ item.qty }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(item.unit_price) }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(item.qty * item.unit_price) }}</td>
+                        {% set desc = item.description or '' %}
+                        {% set qty = item.qty or 1 %}
+                        {% set price = item.unit_price | float %}
+                        <tr {% if 'Late Fee' in desc or 'Magistrate' in desc %}class="table-warning"{% endif %}>
+                            <td>{{ desc }}</td>
+                            <td class="text-center">{{ qty }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(price) }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(qty * price) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

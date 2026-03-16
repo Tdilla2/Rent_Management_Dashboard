@@ -573,12 +573,16 @@ def view_invoice(invoice_id):
         WHERE invoices.id=%s
     ''', (invoice_id,))
     invoice = cur.fetchone()
-    cur.execute("SELECT * FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+    if not invoice:
+        conn.close()
+        flash('Invoice not found.', 'danger')
+        return redirect(url_for('invoices_list'))
+    cur.execute("SELECT * FROM invoice_items WHERE invoice_id=%s ORDER BY id", (invoice_id,))
     items = cur.fetchall()
-    subtotal = sum(float(i['qty']) * float(i['unit_price']) for i in items)
+    subtotal = sum(float(i['qty'] or 1) * float(i['unit_price'] or 0) for i in items)
     today = date.today()
     days_overdue = 0
-    if invoice and invoice['due_date']:
+    if invoice['due_date']:
         try:
             due = datetime.strptime(invoice['due_date'], '%Y-%m-%d').date()
             days_overdue = (today - due).days
