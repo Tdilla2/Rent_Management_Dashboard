@@ -27,6 +27,13 @@
                             <input type="text" name="receipt_number" class="form-control" value="{{ next_num }}" required>
                         </div>
                         <div class="col-md-4">
+                            <label class="form-label">Receipt Type</label>
+                            <select name="receipt_type" class="form-select" id="receiptType" onchange="updateTotal()">
+                                <option value="payment">Payment</option>
+                                <option value="deposit">Deposit</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
                             <label class="form-label">Select Renter</label>
                             <select name="renter_id" class="form-select" required id="renterSelect" onchange="fetchBalance()">
                                 <option value="">-- Select --</option>
@@ -164,7 +171,10 @@ function loadInvoice() {
     }
 
     fetch(`/api/invoice-details/${invoiceId}`)
-        .then(r => r.json())
+        .then(r => {
+            if (!r.ok) throw new Error('Invoice not found');
+            return r.json();
+        })
         .then(data => {
             currentInvoiceId = data.invoice_id;
 
@@ -202,6 +212,9 @@ function loadInvoice() {
             // Fetch balance with invoice context
             fetchBalance();
             updateTotal();
+        })
+        .catch(err => {
+            alert('Could not load invoice details: ' + err.message);
         });
 }
 
@@ -306,18 +319,22 @@ function updateTotal() {
 
     const err = document.getElementById('totalError');
     const btn = document.getElementById('submitBtn');
+    const receiptType = document.getElementById('receiptType').value;
+    const isDeposit = receiptType === 'deposit';
+    const hasInvoice = currentInvoiceId > 0;
 
-    if (currentRemaining !== null && total > currentRemaining) {
+    // Deposits and invoice-backed receipts skip balance validation
+    if (total <= 0) {
         err.style.display = 'block';
-        err.textContent = `Total $${total.toFixed(2)} exceeds remaining balance of $${currentRemaining.toFixed(2)}`;
+        err.textContent = 'Total must be greater than $0.';
         btn.disabled = true;
-    } else if (currentRemaining !== null && currentRemaining <= 0) {
+    } else if (!isDeposit && !hasInvoice && currentRemaining !== null && currentRemaining <= 0) {
         err.style.display = 'block';
         err.textContent = 'This month is already paid in full.';
         btn.disabled = true;
-    } else if (total <= 0) {
+    } else if (!isDeposit && !hasInvoice && currentRemaining !== null && total > currentRemaining) {
         err.style.display = 'block';
-        err.textContent = 'Total must be greater than $0.';
+        err.textContent = `Total $${total.toFixed(2)} exceeds remaining balance of $${currentRemaining.toFixed(2)}`;
         btn.disabled = true;
     } else {
         err.style.display = 'none';
@@ -330,7 +347,11 @@ document.getElementById('receiptForm').addEventListener('submit', function(e) {
     let total = 0;
     amounts.forEach(inp => { total += parseFloat(inp.value) || 0; });
 
-    if (currentRemaining !== null && (total > currentRemaining || currentRemaining <= 0)) {
+    const receiptType = document.getElementById('receiptType').value;
+    const isDeposit = receiptType === 'deposit';
+    const hasInvoice = currentInvoiceId > 0;
+
+    if (!isDeposit && !hasInvoice && currentRemaining !== null && (total > currentRemaining || currentRemaining <= 0)) {
         e.preventDefault();
         alert('Payment amount exceeds the remaining balance.');
         return;
