@@ -356,6 +356,11 @@ def edit_renter(renter_id):
 def delete_renter(renter_id):
     conn = get_db()
     cur = conn.cursor()
+    # Delete child records in correct order before deleting renter
+    cur.execute("DELETE FROM invoice_items WHERE invoice_id IN (SELECT id FROM invoices WHERE renter_id=%s)", (renter_id,))
+    cur.execute("DELETE FROM invoices WHERE renter_id=%s", (renter_id,))
+    cur.execute("DELETE FROM receipt_items WHERE receipt_id IN (SELECT id FROM receipts WHERE renter_id=%s)", (renter_id,))
+    cur.execute("DELETE FROM receipts WHERE renter_id=%s", (renter_id,))
     cur.execute("DELETE FROM renters WHERE id=%s", (renter_id,))
     conn.commit()
     conn.close()
