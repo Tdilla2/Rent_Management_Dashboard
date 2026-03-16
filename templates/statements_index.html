@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Statements{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-file-earmark-ruled"></i> Renter Statements</h3>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        {% if renters %}
+        <div class="row g-3">
+            {% for r in renters %}
+            <div class="col-md-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title mb-1">{{ r.name }}</h6>
+                        <p class="text-muted mb-2" style="font-size:0.85rem;">Unit {{ r.unit }} &bull; ${{ "{:,.2f}".format(r.monthly_rent) }}/mo</p>
+                        <div class="d-flex gap-2">
+                            <a href="{{ url_for('renter_statement', renter_id=r.id) }}" class="btn btn-sm btn-primary">
+                                <i class="bi bi-file-earmark-text"></i> View Statement
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted text-center mb-0">No renters found.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

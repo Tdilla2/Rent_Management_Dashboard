@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Petty Cash{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-coin"></i> Petty Cash / Coins</h3>
+    <button class="btn btn-success no-print" data-bs-toggle="modal" data-bs-target="#addTxnModal">
+        <i class="bi bi-plus-lg"></i> Add Entry
+    </button>
+</div>
+
+<div class="row mb-4 g-3">
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body stat-card">
+                <div class="stat-value text-success">${{ "{:,.2f}".format(total_in) }}</div>
+                <div class="stat-label">Total In (Cash Received)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body stat-card">
+                <div class="stat-value text-danger">${{ "{:,.2f}".format(total_out) }}</div>
+                <div class="stat-label">Total Out (Expenses)</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body stat-card">
+                <div class="stat-value {% if balance >= 0 %}text-primary{% else %}text-danger{% endif %}">${{ "{:,.2f}".format(balance) }}</div>
+                <div class="stat-label">Current Balance</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body table-responsive">
+        {% if transactions %}
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Type</th>
+                    <th class="text-end">In</th>
+                    <th class="text-end">Out</th>
+                    <th class="no-print">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for txn in transactions %}
+                <tr>
+                    <td>{{ txn.transaction_date }}</td>
+                    <td>{{ txn.description }}</td>
+                    <td><span class="badge bg-light text-dark border">{{ txn.category | title }}</span></td>
+                    <td>
+                        {% if txn.transaction_type == 'in' %}
+                            <span class="badge bg-success">Cash In</span>
+                        {% else %}
+                            <span class="badge bg-danger">Expense</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end text-success">
+                        {% if txn.transaction_type == 'in' %}${{ "{:,.2f}".format(txn.amount) }}{% endif %}
+                    </td>
+                    <td class="text-end text-danger">
+                        {% if txn.transaction_type == 'expense' %}${{ "{:,.2f}".format(txn.amount) }}{% endif %}
+                    </td>
+                    <td class="no-print">
+                        <form method="post" action="{{ url_for('delete_petty_cash', item_id=txn.id) }}"
+                              onsubmit="return confirm('Delete this entry?');" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-light fw-bold">
+                    <td colspan="4" class="text-end">Totals</td>
+                    <td class="text-end text-success">${{ "{:,.2f}".format(total_in) }}</td>
+                    <td class="text-end text-danger">${{ "{:,.2f}".format(total_out) }}</td>
+                    <td class="no-print"></td>
+                </tr>
+            </tfoot>
+        </table>
+        {% else %}
+        <p class="text-muted text-center mb-0">No petty cash entries yet. Click "Add Entry" to get started.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add Entry Modal -->
+<div class="modal fade" id="addTxnModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Add Petty Cash Entry</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="{{ url_for('add_petty_cash') }}">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Date</label>
+                            <input type="date" name="transaction_date" class="form-control" value="{{ today }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Type</label>
+                            <select name="transaction_type" class="form-select">
+                                <option value="in">Cash In (received)</option>
+                                <option value="expense">Expense (spent)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">Description</label>
+                            <input type="text" name="description" class="form-control" placeholder="What is this for?" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Amount ($)</label>
+                            <input type="number" name="amount" class="form-control" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Category</label>
+                            <select name="category" class="form-select">
+                                <option value="coins">Coins / Change</option>
+                                <option value="supplies">Supplies</option>
+                                <option value="maintenance">Maintenance</option>
+                                <option value="cleaning">Cleaning</option>
+                                <option value="postage">Postage</option>
+                                <option value="miscellaneous" selected>Miscellaneous</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-save"></i> Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

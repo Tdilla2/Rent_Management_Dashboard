@@ -28,6 +28,20 @@
                     </div>
                 </div>
 
+                <!-- Late Fee Status Banner -->
+                {% if days_overdue >= 1 %}
+                <div class="alert {% if invoice.late_fee_day10_applied %}alert-danger{% elif invoice.late_fee_day6_applied %}alert-warning{% else %}alert-danger{% endif %} no-print mb-3">
+                    <strong><i class="bi bi-exclamation-triangle-fill"></i> Overdue – {{ days_overdue }} day(s) past due.</strong>
+                    {% if invoice.late_fee_day6_applied and invoice.late_fee_day10_applied %}
+                        Day 6 and Day 10 late fees have been applied.
+                    {% elif invoice.late_fee_day6_applied %}
+                        Day 6 fees applied.{% if days_overdue >= 5 %} Day 10 fees can now be applied.{% endif %}
+                    {% else %}
+                        Late fees can be applied.
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 <table class="table">
                     <thead class="table-dark">
                         <tr>
@@ -39,7 +53,7 @@
                     </thead>
                     <tbody>
                         {% for item in items %}
-                        <tr>
+                        <tr {% if 'Late Fee' in item.description or 'Magistrate' in item.description %}class="table-warning"{% endif %}>
                             <td>{{ item.description }}</td>
                             <td class="text-center">{{ item.qty }}</td>
                             <td class="text-end">${{ "{:,.2f}".format(item.unit_price) }}</td>
@@ -67,9 +81,32 @@
                 {% endif %}
             </div>
         </div>
-        <div class="mt-3 no-print">
+
+        <div class="mt-3 no-print d-flex gap-2 flex-wrap">
             <button onclick="window.print()" class="btn btn-outline-primary"><i class="bi bi-printer"></i> Print / Save PDF</button>
             <a href="{{ url_for('invoices_list') }}" class="btn btn-secondary">Back</a>
+
+            {% if not (invoice.late_fee_day6_applied and invoice.late_fee_day10_applied) %}
+            <form method="post" action="{{ url_for('apply_late_fees', invoice_id=invoice.id) }}" style="display:inline;"
+                  onsubmit="return confirm('Apply late fees to this invoice based on today\'s date?');">
+                <button type="submit" class="btn btn-warning">
+                    <i class="bi bi-percent"></i> Apply Late Fees
+                    {% if days_overdue >= 5 and not invoice.late_fee_day6_applied %}
+                        (Day 6 + Day 10)
+                    {% elif days_overdue >= 5 and not invoice.late_fee_day10_applied %}
+                        (Day 10)
+                    {% elif days_overdue >= 1 and not invoice.late_fee_day6_applied %}
+                        (Day 6)
+                    {% endif %}
+                </button>
+            </form>
+            {% else %}
+            <span class="btn btn-outline-secondary disabled"><i class="bi bi-check-circle"></i> All Late Fees Applied</span>
+            {% endif %}
+
+            <a href="{{ url_for('create_receipt') }}" class="btn btn-success">
+                <i class="bi bi-receipt"></i> Record Payment
+            </a>
         </div>
     </div>
 </div>

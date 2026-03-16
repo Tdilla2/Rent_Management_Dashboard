@@ -1,18 +1,19 @@
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
 app = Flask(__name__, template_folder='../templates')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 
 MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+FULL_MONTHS = ['January','February','March','April','May','June',
+               'July','August','September','October','November','December']
 
 
 def get_db():
     url = os.environ.get('POSTGRES_URL', '')
-    # Vercel may use postgres:// but psycopg2 needs postgresql://
     if url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql://', 1)
     conn = psycopg2.connect(url, cursor_factory=RealDictCursor)
@@ -23,6 +24,7 @@ def get_db():
 def init_db():
     conn = get_db()
     cur = conn.cursor()
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -78,6 +80,12 @@ def init_db():
         )
     ''')
 
+    # Add new columns to invoices table (safe if already exist)
+    cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS auto_generated BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS late_fee_day6_applied BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS late_fee_day10_applied BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS month_year TEXT DEFAULT ''")
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS invoice_items (
             id SERIAL PRIMARY KEY,
@@ -101,6 +109,11 @@ def init_db():
         )
     ''')
 
+    # Add new columns to receipts table (safe if already exist)
+    cur.execute("ALTER TABLE receipts ADD COLUMN IF NOT EXISTS deposit_confirmed BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE receipts ADD COLUMN IF NOT EXISTS deposit_date TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE receipts ADD COLUMN IF NOT EXISTS receipt_type TEXT DEFAULT 'payment'")
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS receipt_items (
             id SERIAL PRIMARY KEY,
@@ -108,6 +121,32 @@ def init_db():
             description TEXT,
             period TEXT,
             amount NUMERIC(10,2) DEFAULT 0
+        )
+    ''')
+
+    # Credits / Refunds table
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS credits (
+            id SERIAL PRIMARY KEY,
+            renter_id INTEGER NOT NULL REFERENCES renters(id) ON DELETE CASCADE,
+            credit_date TEXT NOT NULL,
+            amount NUMERIC(10,2) DEFAULT 0,
+            description TEXT DEFAULT '',
+            credit_type TEXT DEFAULT 'credit',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Petty cash / Coins table
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS petty_cash (
+            id SERIAL PRIMARY KEY,
+            transaction_date TEXT NOT NULL,
+            description TEXT NOT NULL,
+            amount NUMERIC(10,2) DEFAULT 0,
+            transaction_type TEXT DEFAULT 'expense',
+            category TEXT DEFAULT 'miscellaneous',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -153,6 +192,19 @@ def get_settings(conn):
     cur = conn.cursor()
     cur.execute("SELECT * FROM settings WHERE id=1")
     return cur.fetchone()
+
+
+def get_next_invoice_number(cur):
+    cur.execute("SELECT invoice_number FROM invoices ORDER BY id DESC LIMIT 1")
+    last = cur.fetchone()
+    if last:
+        try:
+            num = int(last['invoice_number'].split('-')[1]) + 1
+        except (IndexError, ValueError):
+            num = 1
+    else:
+        num = 1
+    return num
 
 
 # ── ROUTES ──
@@ -382,19 +434,82 @@ def unpaid_list():
                            settings=settings, months=MONTHS)
 
 
+# ── INVOICES ──
+
 @app.route('/invoices')
 def invoices_list():
     conn = get_db()
     settings = get_settings(conn)
     cur = conn.cursor()
     cur.execute('''
-        SELECT invoices.*, renters.name as renter_name, renters.unit
-        FROM invoices JOIN renters ON invoices.renter_id = renters.id
+        SELECT invoices.*, renters.name as renter_name, renters.unit,
+               COALESCE(SUM(ii.qty * ii.unit_price), 0) as total
+        FROM invoices
+        JOIN renters ON invoices.renter_id = renters.id
+        LEFT JOIN invoice_items ii ON ii.invoice_id = invoices.id
+        GROUP BY invoices.id, renters.name, renters.unit
         ORDER BY invoices.id DESC
     ''')
     invoices = cur.fetchall()
     conn.close()
-    return render_template('invoices_list.html', invoices=invoices, settings=settings)
+    return render_template('invoices_list.html', invoices=invoices, settings=settings,
+                           months=MONTHS, full_months=FULL_MONTHS,
+                           current_year=date.today().year,
+                           current_month=date.today().month)
+
+
+@app.route('/invoices/generate-monthly', methods=['POST'])
+def generate_monthly_invoices():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    month = int(request.form.get('month', date.today().month))
+    year = int(request.form.get('year', settings['current_year']))
+
+    period = f"{FULL_MONTHS[month-1]} {year}"
+    invoice_date = f"{year}-{month:02d}-01"
+    due_date = f"{year}-{month:02d}-05"
+
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY id")
+    renters = cur.fetchall()
+
+    num = get_next_invoice_number(cur)
+    created = 0
+    skipped = 0
+
+    for renter in renters:
+        # Skip if already generated for this renter/period
+        cur.execute(
+            "SELECT id FROM invoices WHERE renter_id=%s AND period=%s AND auto_generated=TRUE",
+            (renter['id'], period)
+        )
+        if cur.fetchone():
+            skipped += 1
+            continue
+
+        inv_num = f"INV-{num:04d}"
+        cur.execute(
+            """INSERT INTO invoices
+               (invoice_number, renter_id, invoice_date, due_date, period, notes,
+                auto_generated, month_year)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (inv_num, renter['id'], invoice_date, due_date, period,
+             f"Payment due by {due_date}. A 10% late fee plus $75 magistrate fee applies on day 6. An additional 10% applies on day 10.",
+             True, f"{year}-{month:02d}")
+        )
+        invoice_id = cur.fetchone()['id']
+        cur.execute(
+            "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+            (invoice_id, 'Monthly Rent', 1, float(renter['monthly_rent']))
+        )
+        num += 1
+        created += 1
+
+    conn.commit()
+    conn.close()
+    flash(f'Generated {created} invoice(s) for {period}. {skipped} skipped (already exist).', 'success')
+    return redirect(url_for('invoices_list'))
 
 
 @app.route('/invoices/create', methods=['GET','POST'])
@@ -437,18 +552,8 @@ def create_invoice():
         flash('Invoice created.', 'success')
         return redirect(url_for('view_invoice', invoice_id=invoice_id))
 
-    # Get next invoice number
-    cur.execute("SELECT invoice_number FROM invoices ORDER BY id DESC LIMIT 1")
-    last = cur.fetchone()
-    if last:
-        try:
-            num = int(last['invoice_number'].split('-')[1]) + 1
-        except (IndexError, ValueError):
-            num = 1
-    else:
-        num = 1
+    num = get_next_invoice_number(cur)
     next_num = f"INV-{num:04d}"
-
     cur.execute("SELECT * FROM fee_schedule ORDER BY id")
     fee_types = cur.fetchall()
     conn.close()
@@ -471,10 +576,98 @@ def view_invoice(invoice_id):
     cur.execute("SELECT * FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
     items = cur.fetchall()
     subtotal = sum(float(i['qty']) * float(i['unit_price']) for i in items)
+    today = date.today()
+    days_overdue = 0
+    if invoice and invoice['due_date']:
+        try:
+            due = datetime.strptime(invoice['due_date'], '%Y-%m-%d').date()
+            days_overdue = (today - due).days
+        except (ValueError, TypeError):
+            pass
     conn.close()
     return render_template('invoice_view.html', invoice=invoice, items=items,
-                           subtotal=subtotal, settings=settings)
+                           subtotal=subtotal, settings=settings,
+                           days_overdue=days_overdue, today=today)
 
+
+@app.route('/invoices/<int:invoice_id>/apply-late-fees', methods=['POST'])
+def apply_late_fees(invoice_id):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT invoices.*, renters.monthly_rent
+        FROM invoices JOIN renters ON invoices.renter_id = renters.id
+        WHERE invoices.id=%s
+    ''', (invoice_id,))
+    invoice = cur.fetchone()
+
+    if not invoice:
+        conn.close()
+        flash('Invoice not found.', 'danger')
+        return redirect(url_for('invoices_list'))
+
+    today = date.today()
+    try:
+        due_date = datetime.strptime(invoice['due_date'], '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        conn.close()
+        flash('Invalid due date on invoice.', 'danger')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    days_overdue = (today - due_date).days
+    changes = []
+
+    # Get current invoice items
+    cur.execute("SELECT * FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+    items = cur.fetchall()
+
+    # Base items = everything that isn't a late fee or magistrate fee
+    late_tags = ['Late Fee', 'Magistrate Fee']
+    base_items = [i for i in items if not any(tag in i['description'] for tag in late_tags)]
+    base_total = sum(float(i['qty']) * float(i['unit_price']) for i in base_items)
+
+    # Day 6 (1+ days past due date of 5th = 6th of month)
+    if days_overdue >= 1 and not invoice['late_fee_day6_applied']:
+        day6_pct = round(base_total * 0.10, 2)
+        cur.execute(
+            "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+            (invoice_id, 'Late Fee – Day 6 (10%)', 1, day6_pct)
+        )
+        cur.execute(
+            "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+            (invoice_id, 'Magistrate Fee', 1, 75.00)
+        )
+        cur.execute("UPDATE invoices SET late_fee_day6_applied=TRUE WHERE id=%s", (invoice_id,))
+        changes.append(f'Day 6: +${day6_pct:.2f} (10%) + $75.00 magistrate fee')
+
+    # Day 10 (5+ days past due date = 10th of month)
+    if days_overdue >= 5 and not invoice['late_fee_day10_applied']:
+        # Get running total including any day 6 fees just added
+        cur.execute(
+            "SELECT COALESCE(SUM(qty * unit_price), 0) as total FROM invoice_items WHERE invoice_id=%s",
+            (invoice_id,)
+        )
+        current_total = float(cur.fetchone()['total'])
+        day10_pct = round(current_total * 0.10, 2)
+        cur.execute(
+            "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+            (invoice_id, 'Late Fee – Day 10 (10%)', 1, day10_pct)
+        )
+        cur.execute("UPDATE invoices SET late_fee_day10_applied=TRUE WHERE id=%s", (invoice_id,))
+        changes.append(f'Day 10: +${day10_pct:.2f} (10% of ${current_total:.2f})')
+
+    if changes:
+        conn.commit()
+        flash('Late fees applied: ' + '; '.join(changes), 'success')
+    else:
+        flash('No new late fees to apply (check that invoice is overdue and fees not already applied).', 'info')
+
+    conn.close()
+    return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+
+# ── RECEIPTS ──
 
 @app.route('/receipts')
 def receipts_list():
@@ -482,8 +675,12 @@ def receipts_list():
     settings = get_settings(conn)
     cur = conn.cursor()
     cur.execute('''
-        SELECT receipts.*, renters.name as renter_name, renters.unit
-        FROM receipts JOIN renters ON receipts.renter_id = renters.id
+        SELECT receipts.*, renters.name as renter_name, renters.unit,
+               COALESCE(SUM(ri.amount), 0) as total
+        FROM receipts
+        JOIN renters ON receipts.renter_id = renters.id
+        LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+        GROUP BY receipts.id, renters.name, renters.unit
         ORDER BY receipts.id DESC
     ''')
     receipts = cur.fetchall()
@@ -506,6 +703,7 @@ def create_receipt():
         pay_method = request.form.get('payment_method', '')
         month = request.form.get('month', '')
         from_invoice = request.form.get('from_invoice', '')
+        receipt_type = request.form.get('receipt_type', 'payment')
 
         cur.execute("SELECT * FROM renters WHERE id=%s", (renter_id,))
         renter = cur.fetchone()
@@ -526,9 +724,9 @@ def create_receipt():
 
         total_amount = sum(amt for _, amt in line_items)
 
-        # Server-side validation: don't allow paying more than what's owed
+        # Server-side validation for regular payments (not deposits)
         month_num = MONTHS.index(month) + 1 if month in MONTHS else None
-        if month_num and renter:
+        if month_num and renter and receipt_type == 'payment':
             pay_year = settings['current_year']
             if pay_date:
                 try:
@@ -563,8 +761,8 @@ def create_receipt():
                 return redirect(url_for('create_receipt'))
 
         cur.execute(
-            "INSERT INTO receipts (receipt_number, renter_id, payment_date, payment_method, month, invoice_ref) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id",
-            (rec_num, renter_id, pay_date, pay_method, month, from_invoice)
+            "INSERT INTO receipts (receipt_number, renter_id, payment_date, payment_method, month, invoice_ref, receipt_type) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+            (rec_num, renter_id, pay_date, pay_method, month, from_invoice, receipt_type)
         )
         receipt_id = cur.fetchone()['id']
 
@@ -574,8 +772,8 @@ def create_receipt():
                 (receipt_id, desc, month, amt)
             )
 
-        # Update the payments table
-        if month_num:
+        # Update payments table for standard payment receipts
+        if month_num and receipt_type == 'payment':
             pay_year = settings['current_year']
             if pay_date:
                 try:
@@ -630,6 +828,386 @@ def create_receipt():
                            invoices=invoices)
 
 
+@app.route('/receipts/<int:receipt_id>')
+def view_receipt(receipt_id):
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT receipts.*, renters.name, renters.unit, renters.monthly_rent,
+               renters.phone, renters.email
+        FROM receipts JOIN renters ON receipts.renter_id = renters.id
+        WHERE receipts.id=%s
+    ''', (receipt_id,))
+    receipt = cur.fetchone()
+    cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
+    items = cur.fetchall()
+    total = sum(float(i['amount']) for i in items)
+
+    month_name = receipt['month']
+    month_num = MONTHS.index(month_name) + 1 if month_name in MONTHS else None
+    total_paid_month = 0
+    fees_month = 0
+    if month_num:
+        pay_year = settings['current_year']
+        if receipt['payment_date']:
+            try:
+                pay_year = int(receipt['payment_date'].split('-')[0])
+            except (IndexError, ValueError):
+                pass
+
+        cur.execute('''
+            SELECT COALESCE(SUM(ri.amount), 0) as total
+            FROM receipt_items ri
+            JOIN receipts r ON ri.receipt_id = r.id
+            WHERE r.renter_id = %s AND r.month = %s AND r.id <= %s
+        ''', (receipt['renter_id'], month_name, receipt_id))
+        result = cur.fetchone()
+        total_paid_month = float(result['total'])
+
+        cur.execute(
+            "SELECT fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+            (receipt['renter_id'], pay_year, month_num)
+        )
+        pay = cur.fetchone()
+        if pay:
+            fees_month = float(pay['fees'])
+
+    conn.close()
+    return render_template('receipt_view.html', receipt=receipt, items=items,
+                           total=total, total_paid_month=total_paid_month,
+                           fees_month=fees_month, settings=settings)
+
+
+@app.route('/receipts/<int:receipt_id>/confirm-deposit', methods=['POST'])
+def confirm_deposit(receipt_id):
+    conn = get_db()
+    cur = conn.cursor()
+    deposit_date = request.form.get('deposit_date', date.today().isoformat())
+    cur.execute(
+        "UPDATE receipts SET deposit_confirmed=TRUE, deposit_date=%s WHERE id=%s",
+        (deposit_date, receipt_id)
+    )
+    conn.commit()
+    conn.close()
+    flash('Deposit confirmed.', 'success')
+    return redirect(url_for('deposits_list'))
+
+
+@app.route('/receipts/<int:receipt_id>/unconfirm-deposit', methods=['POST'])
+def unconfirm_deposit(receipt_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE receipts SET deposit_confirmed=FALSE, deposit_date='' WHERE id=%s",
+        (receipt_id,)
+    )
+    conn.commit()
+    conn.close()
+    flash('Deposit confirmation removed.', 'info')
+    return redirect(url_for('deposits_list'))
+
+
+# ── DEPOSITS ──
+
+@app.route('/deposits')
+def deposits_list():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT receipts.*, renters.name as renter_name, renters.unit,
+               COALESCE(SUM(ri.amount), 0) as total
+        FROM receipts
+        JOIN renters ON receipts.renter_id = renters.id
+        LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+        GROUP BY receipts.id, renters.name, renters.unit
+        ORDER BY receipts.deposit_confirmed ASC, receipts.payment_date DESC
+    ''')
+    receipts = cur.fetchall()
+    pending = [r for r in receipts if not r['deposit_confirmed']]
+    confirmed = [r for r in receipts if r['deposit_confirmed']]
+    pending_total = sum(float(r['total']) for r in pending)
+    conn.close()
+    return render_template('deposits.html', pending=pending, confirmed=confirmed,
+                           pending_total=pending_total, settings=settings,
+                           today=date.today().isoformat())
+
+
+# ── CREDITS / REFUNDS ──
+
+@app.route('/credits')
+def credits_list():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT credits.*, renters.name as renter_name, renters.unit
+        FROM credits
+        JOIN renters ON credits.renter_id = renters.id
+        ORDER BY credits.id DESC
+    ''')
+    credits = cur.fetchall()
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY name")
+    renters = cur.fetchall()
+    total_credits = sum(float(c['amount']) for c in credits)
+    conn.close()
+    return render_template('credits.html', credits=credits, renters=renters,
+                           total_credits=total_credits, settings=settings,
+                           today=date.today().isoformat())
+
+
+@app.route('/credits/add', methods=['POST'])
+def add_credit():
+    conn = get_db()
+    cur = conn.cursor()
+    renter_id = int(request.form['renter_id'])
+    amount = float(request.form.get('amount', 0))
+    description = request.form.get('description', '')
+    credit_date = request.form.get('credit_date', date.today().isoformat())
+    credit_type = request.form.get('credit_type', 'credit')
+
+    if amount <= 0:
+        flash('Amount must be greater than zero.', 'danger')
+        conn.close()
+        return redirect(url_for('credits_list'))
+
+    cur.execute(
+        "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
+        (renter_id, credit_date, amount, description, credit_type)
+    )
+    conn.commit()
+    conn.close()
+    flash('Credit/refund added.', 'success')
+    return redirect(url_for('credits_list'))
+
+
+@app.route('/credits/<int:credit_id>/delete', methods=['POST'])
+def delete_credit(credit_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM credits WHERE id=%s", (credit_id,))
+    conn.commit()
+    conn.close()
+    flash('Credit deleted.', 'success')
+    return redirect(url_for('credits_list'))
+
+
+# ── PETTY CASH / COINS ──
+
+@app.route('/petty-cash')
+def petty_cash_list():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM petty_cash ORDER BY transaction_date DESC, id DESC")
+    transactions = cur.fetchall()
+    total_in = sum(float(t['amount']) for t in transactions if t['transaction_type'] == 'in')
+    total_out = sum(float(t['amount']) for t in transactions if t['transaction_type'] == 'expense')
+    balance = total_in - total_out
+    conn.close()
+    return render_template('petty_cash.html', transactions=transactions,
+                           total_in=total_in, total_out=total_out, balance=balance,
+                           settings=settings, today=date.today().isoformat())
+
+
+@app.route('/petty-cash/add', methods=['POST'])
+def add_petty_cash():
+    conn = get_db()
+    cur = conn.cursor()
+    txn_date = request.form.get('transaction_date', date.today().isoformat())
+    description = request.form.get('description', '').strip()
+    amount = float(request.form.get('amount', 0))
+    txn_type = request.form.get('transaction_type', 'expense')
+    category = request.form.get('category', 'miscellaneous')
+
+    if not description or amount <= 0:
+        flash('Description and amount are required.', 'danger')
+        conn.close()
+        return redirect(url_for('petty_cash_list'))
+
+    cur.execute(
+        "INSERT INTO petty_cash (transaction_date, description, amount, transaction_type, category) VALUES (%s,%s,%s,%s,%s)",
+        (txn_date, description, amount, txn_type, category)
+    )
+    conn.commit()
+    conn.close()
+    flash('Petty cash entry added.', 'success')
+    return redirect(url_for('petty_cash_list'))
+
+
+@app.route('/petty-cash/<int:item_id>/delete', methods=['POST'])
+def delete_petty_cash(item_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM petty_cash WHERE id=%s", (item_id,))
+    conn.commit()
+    conn.close()
+    flash('Entry deleted.', 'success')
+    return redirect(url_for('petty_cash_list'))
+
+
+# ── STATEMENTS ──
+
+@app.route('/statements')
+def statements_index():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY name")
+    renters = cur.fetchall()
+    conn.close()
+    return render_template('statements_index.html', renters=renters, settings=settings)
+
+
+@app.route('/statements/<int:renter_id>')
+def renter_statement(renter_id):
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM renters WHERE id=%s", (renter_id,))
+    renter = cur.fetchone()
+
+    year = request.args.get('year', settings['current_year'], type=int)
+
+    # Get all invoices for this renter in the year
+    cur.execute('''
+        SELECT invoices.*, COALESCE(SUM(ii.qty * ii.unit_price), 0) as total
+        FROM invoices
+        LEFT JOIN invoice_items ii ON ii.invoice_id = invoices.id
+        WHERE invoices.renter_id=%s AND (
+            invoices.invoice_date LIKE %s OR invoices.period LIKE %s
+        )
+        GROUP BY invoices.id
+        ORDER BY invoices.invoice_date ASC
+    ''', (renter_id, f"{year}%", f"%{year}%"))
+    invoices = cur.fetchall()
+
+    # Get all receipts for this renter in the year
+    cur.execute('''
+        SELECT receipts.*, COALESCE(SUM(ri.amount), 0) as total
+        FROM receipts
+        LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+        WHERE receipts.renter_id=%s AND (
+            receipts.payment_date LIKE %s OR receipts.month != ''
+        )
+        GROUP BY receipts.id
+        ORDER BY receipts.payment_date ASC
+    ''', (renter_id, f"{year}%"))
+    receipts = cur.fetchall()
+
+    # Get all credits for this renter in the year
+    cur.execute(
+        "SELECT * FROM credits WHERE renter_id=%s AND credit_date LIKE %s ORDER BY credit_date ASC",
+        (renter_id, f"{year}%")
+    )
+    credits = cur.fetchall()
+
+    # Build statement ledger entries
+    ledger = []
+    for inv in invoices:
+        ledger.append({
+            'date': inv['invoice_date'] or '',
+            'type': 'invoice',
+            'ref': inv['invoice_number'],
+            'description': f"Invoice – {inv['period']}",
+            'charge': float(inv['total']),
+            'payment': 0,
+            'id': inv['id']
+        })
+    for rec in receipts:
+        ledger.append({
+            'date': rec['payment_date'] or '',
+            'type': 'payment',
+            'ref': rec['receipt_number'],
+            'description': f"Payment – {rec['month']} ({rec['payment_method']})",
+            'charge': 0,
+            'payment': float(rec['total']),
+            'id': rec['id']
+        })
+    for cr in credits:
+        ledger.append({
+            'date': cr['credit_date'],
+            'type': 'credit',
+            'ref': f"CR-{cr['id']:04d}",
+            'description': f"{cr['credit_type'].title()} – {cr['description']}",
+            'charge': 0,
+            'payment': float(cr['amount']),
+            'id': cr['id']
+        })
+
+    # Sort by date
+    ledger.sort(key=lambda x: x['date'] or '0000')
+
+    # Calculate running balance
+    running_balance = 0
+    for entry in ledger:
+        running_balance += entry['charge'] - entry['payment']
+        entry['balance'] = running_balance
+
+    total_charges = sum(e['charge'] for e in ledger)
+    total_payments = sum(e['payment'] for e in ledger)
+    balance_due = total_charges - total_payments
+
+    conn.close()
+    return render_template('statement.html', renter=renter, ledger=ledger,
+                           total_charges=total_charges, total_payments=total_payments,
+                           balance_due=balance_due, year=year, settings=settings)
+
+
+# ── FEE SCHEDULE ──
+
+@app.route('/fees', methods=['GET','POST'])
+def fee_schedule():
+    conn = get_db()
+    cur = conn.cursor()
+    if request.method == 'POST':
+        cur.execute("DELETE FROM fee_schedule")
+        i = 0
+        while f'fee_type_{i}' in request.form:
+            cur.execute(
+                "INSERT INTO fee_schedule (fee_type, amount, description) VALUES (%s,%s,%s)",
+                (request.form[f'fee_type_{i}'],
+                 float(request.form.get(f'fee_amount_{i}', 0)),
+                 request.form.get(f'fee_desc_{i}', ''))
+            )
+            i += 1
+        conn.commit()
+        flash('Fee schedule updated.', 'success')
+        conn.close()
+        return redirect(url_for('fee_schedule'))
+
+    cur.execute("SELECT * FROM fee_schedule ORDER BY id")
+    fees = cur.fetchall()
+    settings = get_settings(conn)
+    conn.close()
+    return render_template('fees.html', fees=fees, settings=settings)
+
+
+# ── SETTINGS ──
+
+@app.route('/settings', methods=['GET','POST'])
+def settings_page():
+    conn = get_db()
+    cur = conn.cursor()
+    if request.method == 'POST':
+        cur.execute(
+            "UPDATE settings SET company_name=%s, company_address=%s, current_year=%s WHERE id=1",
+            (request.form['company_name'], request.form['company_address'],
+             int(request.form.get('current_year', 2025)))
+        )
+        conn.commit()
+        flash('Settings updated.', 'success')
+        conn.close()
+        return redirect(url_for('settings_page'))
+    settings = get_settings(conn)
+    conn.close()
+    return render_template('settings.html', settings=settings)
+
+
+# ── JSON APIs ──
+
 @app.route('/api/invoice-details/<int:invoice_id>')
 def api_invoice_details(invoice_id):
     conn = get_db()
@@ -649,9 +1227,7 @@ def api_invoice_details(invoice_id):
 
     inv_month = ''
     if invoice['period']:
-        full_months = ['January','February','March','April','May','June',
-                       'July','August','September','October','November','December']
-        for i, fm in enumerate(full_months):
+        for i, fm in enumerate(FULL_MONTHS):
             if fm.lower() in invoice['period'].lower():
                 inv_month = MONTHS[i]
                 break
@@ -722,103 +1298,6 @@ def api_remaining_balance():
         'fees': fees,
         'total_due': total_due
     })
-
-
-@app.route('/receipts/<int:receipt_id>')
-def view_receipt(receipt_id):
-    conn = get_db()
-    settings = get_settings(conn)
-    cur = conn.cursor()
-    cur.execute('''
-        SELECT receipts.*, renters.name, renters.unit, renters.monthly_rent,
-               renters.phone, renters.email
-        FROM receipts JOIN renters ON receipts.renter_id = renters.id
-        WHERE receipts.id=%s
-    ''', (receipt_id,))
-    receipt = cur.fetchone()
-    cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
-    items = cur.fetchall()
-    total = sum(float(i['amount']) for i in items)
-
-    month_name = receipt['month']
-    month_num = MONTHS.index(month_name) + 1 if month_name in MONTHS else None
-    total_paid_month = 0
-    fees_month = 0
-    if month_num:
-        pay_year = settings['current_year']
-        if receipt['payment_date']:
-            try:
-                pay_year = int(receipt['payment_date'].split('-')[0])
-            except (IndexError, ValueError):
-                pass
-
-        cur.execute('''
-            SELECT COALESCE(SUM(ri.amount), 0) as total
-            FROM receipt_items ri
-            JOIN receipts r ON ri.receipt_id = r.id
-            WHERE r.renter_id = %s AND r.month = %s AND r.id <= %s
-        ''', (receipt['renter_id'], month_name, receipt_id))
-        result = cur.fetchone()
-        total_paid_month = float(result['total'])
-
-        cur.execute(
-            "SELECT fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
-            (receipt['renter_id'], pay_year, month_num)
-        )
-        pay = cur.fetchone()
-        if pay:
-            fees_month = float(pay['fees'])
-
-    conn.close()
-    return render_template('receipt_view.html', receipt=receipt, items=items,
-                           total=total, total_paid_month=total_paid_month,
-                           fees_month=fees_month, settings=settings)
-
-
-@app.route('/fees', methods=['GET','POST'])
-def fee_schedule():
-    conn = get_db()
-    cur = conn.cursor()
-    if request.method == 'POST':
-        cur.execute("DELETE FROM fee_schedule")
-        i = 0
-        while f'fee_type_{i}' in request.form:
-            cur.execute(
-                "INSERT INTO fee_schedule (fee_type, amount, description) VALUES (%s,%s,%s)",
-                (request.form[f'fee_type_{i}'],
-                 float(request.form.get(f'fee_amount_{i}', 0)),
-                 request.form.get(f'fee_desc_{i}', ''))
-            )
-            i += 1
-        conn.commit()
-        flash('Fee schedule updated.', 'success')
-        conn.close()
-        return redirect(url_for('fee_schedule'))
-
-    cur.execute("SELECT * FROM fee_schedule ORDER BY id")
-    fees = cur.fetchall()
-    settings = get_settings(conn)
-    conn.close()
-    return render_template('fees.html', fees=fees, settings=settings)
-
-
-@app.route('/settings', methods=['GET','POST'])
-def settings_page():
-    conn = get_db()
-    cur = conn.cursor()
-    if request.method == 'POST':
-        cur.execute(
-            "UPDATE settings SET company_name=%s, company_address=%s, current_year=%s WHERE id=1",
-            (request.form['company_name'], request.form['company_address'],
-             int(request.form.get('current_year', 2025)))
-        )
-        conn.commit()
-        flash('Settings updated.', 'success')
-        conn.close()
-        return redirect(url_for('settings_page'))
-    settings = get_settings(conn)
-    conn.close()
-    return render_template('settings.html', settings=settings)
 
 
 # Initialize database tables on first request
