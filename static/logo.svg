@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="100" fill="#4f46e5"/>
+
+  <!-- Building body -->
+  <rect x="45" y="90" width="110" height="75" rx="4" fill="white"/>
+
+  <!-- Roof / Triangle -->
+  <polygon points="35,92 100,40 165,92" fill="#e0e7ff"/>
+
+  <!-- Rooftop accent line -->
+  <line x1="35" y1="92" x2="165" y2="92" stroke="#4f46e5" stroke-width="3"/>
+
+  <!-- Windows row 1 -->
+  <rect x="58" y="100" width="20" height="18" rx="3" fill="#4f46e5"/>
+  <rect x="90" y="100" width="20" height="18" rx="3" fill="#4f46e5"/>
+  <rect x="122" y="100" width="20" height="18" rx="3" fill="#4f46e5"/>
+
+  <!-- Windows row 2 -->
+  <rect x="58" y="126" width="20" height="18" rx="3" fill="#4f46e5"/>
+  <rect x="122" y="126" width="20" height="18" rx="3" fill="#4f46e5"/>
+
+  <!-- Door -->
+  <rect x="86" y="122" width="28" height="43" rx="4" fill="#c7d2fe"/>
+
+  <!-- Dollar sign badge -->
+  <circle cx="155" cy="148" r="18" fill="#22c55e"/>
+  <text x="155" y="155" font-family="Arial,sans-serif" font-size="20" font-weight="800"
+        text-anchor="middle" fill="white">$</text>
+</svg>
