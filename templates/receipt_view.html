@@ -42,7 +42,7 @@
                     <div class="col-6">
                         <p><strong>Renter:</strong> {{ receipt.name }}</p>
                         <p><strong>Unit/Lot:</strong> {{ receipt.unit }}</p>
-                        <p><strong>Monthly Rent:</strong> ${{ "{:,.2f}".format(receipt.monthly_rent) }}</p>
+                        <p><strong>Monthly Rent:</strong> ${{ "{:,.2f}".format(monthly_rent) }}</p>
                         <p><strong>Phone:</strong> {{ receipt.phone }}</p>
                         <p><strong>Email:</strong> {{ receipt.email }}</p>
                     </div>
@@ -59,9 +59,9 @@
                     <tbody>
                         {% for item in items %}
                         <tr>
-                            <td>{{ item.description }}</td>
-                            <td>{{ item.period }}</td>
-                            <td class="text-end">${{ "{:,.2f}".format(item.amount) }}</td>
+                            <td>{{ item.description or '' }}</td>
+                            <td>{{ item.period or '' }}</td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.amount | float) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -77,7 +77,7 @@
                         <tr>
                             <td colspan="2" class="text-end">Remaining Balance</td>
                             <td class="text-end">
-                                {% set balance = receipt.monthly_rent + fees_month - total_paid_month %}
+                                {% set balance = monthly_rent + fees_month - total_paid_month %}
                                 {% if balance > 0 %}
                                 <span class="text-danger"><strong>${{ "{:,.2f}".format(balance) }}</strong></span>
                                 {% else %}
@@ -88,10 +88,11 @@
                         <tr>
                             <td colspan="2" class="text-end"><strong>Payment Status</strong></td>
                             <td class="text-end">
-                                {% if total_paid_month >= receipt.monthly_rent + fees_month %}
+                                {% set total_due = monthly_rent + fees_month %}
+                                {% if total_paid_month >= total_due %}
                                 <span class="badge bg-success">Paid in Full</span>
                                 {% elif total_paid_month > 0 %}
-                                <span class="badge bg-warning text-dark">Partial - ${{ "{:,.2f}".format(receipt.monthly_rent + fees_month - total_paid_month) }} remaining</span>
+                                <span class="badge bg-warning text-dark">Partial - ${{ "{:,.2f}".format(total_due - total_paid_month) }} remaining</span>
                                 {% else %}
                                 <span class="badge bg-danger">Unpaid</span>
                                 {% endif %}

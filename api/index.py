@@ -844,14 +844,19 @@ def view_receipt(receipt_id):
         WHERE receipts.id=%s
     ''', (receipt_id,))
     receipt = cur.fetchone()
-    cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
+    if not receipt:
+        conn.close()
+        flash('Receipt not found.', 'danger')
+        return redirect(url_for('receipts_list'))
+    cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s ORDER BY id", (receipt_id,))
     items = cur.fetchall()
-    total = sum(float(i['amount']) for i in items)
+    total = sum(float(i['amount'] or 0) for i in items)
+    monthly_rent = float(receipt['monthly_rent'] or 0)
 
-    month_name = receipt['month']
+    month_name = receipt['month'] or ''
     month_num = MONTHS.index(month_name) + 1 if month_name in MONTHS else None
-    total_paid_month = 0
-    fees_month = 0
+    total_paid_month = 0.0
+    fees_month = 0.0
     if month_num:
         pay_year = settings['current_year']
         if receipt['payment_date']:
@@ -867,7 +872,7 @@ def view_receipt(receipt_id):
             WHERE r.renter_id = %s AND r.month = %s AND r.id <= %s
         ''', (receipt['renter_id'], month_name, receipt_id))
         result = cur.fetchone()
-        total_paid_month = float(result['total'])
+        total_paid_month = float(result['total'] or 0)
 
         cur.execute(
             "SELECT fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
@@ -875,12 +880,13 @@ def view_receipt(receipt_id):
         )
         pay = cur.fetchone()
         if pay:
-            fees_month = float(pay['fees'])
+            fees_month = float(pay['fees'] or 0)
 
     conn.close()
     return render_template('receipt_view.html', receipt=receipt, items=items,
                            total=total, total_paid_month=total_paid_month,
-                           fees_month=fees_month, settings=settings)
+                           fees_month=fees_month, monthly_rent=monthly_rent,
+                           settings=settings)
 
 
 @app.route('/receipts/<int:receipt_id>/confirm-deposit', methods=['POST'])
