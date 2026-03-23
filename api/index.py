@@ -3,10 +3,8 @@ import functools
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
-from io import BytesIO
-from xhtml2pdf import pisa
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -2175,20 +2173,11 @@ def petty_cash_report_pdf():
     conn.close()
 
     month_name = FULL_MONTHS[month - 1]
-    html = render_template('petty_cash_report_pdf.html', categories=categories,
+    return render_template('petty_cash_report_pdf.html', categories=categories,
                            total_in=total_in, total_out=total_out,
                            balance=total_in - total_out,
                            month=month, year=year, settings=settings,
                            month_name=month_name, today=date.today().isoformat())
-
-    pdf_buffer = BytesIO()
-    pisa.CreatePDF(html, dest=pdf_buffer)
-    pdf_buffer.seek(0)
-
-    response = make_response(pdf_buffer.read())
-    response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename=Petty_Cash_Report_{month_name}_{year}.pdf'
-    return response
 
 
 @app.route('/reports/closing-statement')
