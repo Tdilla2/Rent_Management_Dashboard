@@ -3,17 +3,18 @@ import functools
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import uuid
+import boto3
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload limit
 
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+S3_BUCKET = os.environ.get('S3_DOCUMENTS_BUCKET', 'rent-mgmt-documents-130423149110')
+s3_client = boto3.client('s3', region_name='us-east-1')
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'xlsx', 'xls', 'csv'}
 
 MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -753,8 +754,8 @@ def upload_document(renter_id):
         return redirect(url_for('edit_renter', renter_id=renter_id))
 
     original_name = secure_filename(file.filename)
-    unique_name = f"{uuid.uuid4().hex}_{original_name}"
-    file.save(os.path.join(UPLOAD_FOLDER, unique_name))
+    unique_name = f"renters/{renter_id}/{uuid.uuid4().hex}_{original_name}"
+    s3_client.upload_fileobj(file, S3_BUCKET, unique_name)
 
     doc_type = request.form.get('doc_type', 'other')
     description = request.form.get('doc_description', '').strip()
@@ -771,10 +772,15 @@ def upload_document(renter_id):
     return redirect(url_for('edit_renter', renter_id=renter_id))
 
 
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<path:filename>')
 @login_required
 def download_document(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    presigned_url = s3_client.generate_presigned_url(
+        'get_object',
+        Params={'Bucket': S3_BUCKET, 'Key': filename},
+        ExpiresIn=300  # 5 minute link
+    )
+    return redirect(presigned_url)
 
 
 @app.route('/documents/<int:doc_id>/delete', methods=['POST'])
@@ -790,9 +796,10 @@ def delete_document(doc_id):
         return redirect(url_for('renters_list'))
 
     renter_id = doc['renter_id']
-    filepath = os.path.join(UPLOAD_FOLDER, doc['filename'])
-    if os.path.exists(filepath):
-        os.remove(filepath)
+    try:
+        s3_client.delete_object(Bucket=S3_BUCKET, Key=doc['filename'])
+    except Exception:
+        pass
 
     cur.execute("DELETE FROM renter_documents WHERE id=%s", (doc_id,))
     conn.commit()
