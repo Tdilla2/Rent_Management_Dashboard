@@ -22,6 +22,8 @@
                     <th>Method</th>
                     <th>Type</th>
                     <th class="text-end">Amount</th>
+                    <th class="text-end">Credits</th>
+                    <th class="text-end">Balance</th>
                     <th>Deposit</th>
                     <th>Actions</th>
                 </tr>
@@ -42,6 +44,22 @@
                         {% endif %}
                     </td>
                     <td class="text-end">${{ "{:,.2f}".format(rec.total) }}</td>
+                    <td class="text-end">
+                        {% if rec.credit_total > 0 %}
+                        <span class="text-info">${{ "{:,.2f}".format(rec.credit_total) }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        {% if rec.remaining > 0 %}
+                        <span class="text-danger">${{ "{:,.2f}".format(rec.remaining) }} due</span>
+                        {% elif rec.overpayment > 0 %}
+                        <span class="text-success">${{ "{:,.2f}".format(rec.overpayment) }} credit</span>
+                        {% else %}
+                        <span class="text-success">Paid in Full</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if rec.deposit_confirmed %}
                             <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Confirmed</span>

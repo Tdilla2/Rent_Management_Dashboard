@@ -1086,16 +1086,67 @@ def receipts_list():
     cur = conn.cursor()
     cur.execute('''
         SELECT receipts.*, renters.name as renter_name, renters.unit,
-               COALESCE(SUM(ri.amount), 0) as total
+               renters.monthly_rent,
+               COALESCE(SUM(CASE WHEN ri.amount > 0 THEN ri.amount ELSE 0 END), 0) as total,
+               COALESCE(SUM(CASE WHEN ri.amount < 0 THEN ABS(ri.amount) ELSE 0 END), 0) as credit_total
         FROM receipts
         JOIN renters ON receipts.renter_id = renters.id
         LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
-        GROUP BY receipts.id, renters.name, renters.unit
+        GROUP BY receipts.id, renters.name, renters.unit, renters.monthly_rent
         ORDER BY receipts.id DESC
     ''')
-    receipts = cur.fetchall()
+    receipts_raw = cur.fetchall()
+
+    # Calculate remaining balance or credit for each receipt
+    receipts_data = []
+    for rec in receipts_raw:
+        r = dict(rec)
+        renter_id = rec['renter_id']
+        month_name = rec['month'] or ''
+        monthly_rent = float(rec['monthly_rent'] or 0)
+        payment_total = float(rec['total'] or 0)
+        credit_amt = float(rec['credit_total'] or 0)
+
+        # Calculate total_due and remaining for this renter/month
+        remaining = 0.0
+        overpayment = 0.0
+        if month_name in MONTHS:
+            month_num = MONTHS.index(month_name) + 1
+            pay_year = settings['current_year']
+            if rec['payment_date']:
+                try:
+                    pay_year = int(rec['payment_date'].split('-')[0])
+                except (IndexError, ValueError):
+                    pass
+            cur.execute("SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+                        (renter_id, pay_year, month_num))
+            pay = cur.fetchone()
+            total_paid_month = float(pay['amount_paid']) if pay else 0
+            fees = float(pay['fees']) if pay else 0
+
+            # Non-rent charges
+            cur.execute('''
+                SELECT COALESCE(SUM(ri.amount), 0) as total
+                FROM receipt_items ri JOIN receipts r2 ON ri.receipt_id = r2.id
+                WHERE r2.renter_id = %s AND r2.month = %s AND r2.receipt_type = 'payment'
+                  AND ri.amount > 0 AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
+            ''', (renter_id, month_name))
+            non_rent = float(cur.fetchone()['total'])
+
+            total_due = monthly_rent + fees + non_rent
+            balance = total_due - total_paid_month
+            if balance > 0:
+                remaining = balance
+            elif balance < 0:
+                overpayment = abs(balance)
+
+        r['remaining'] = remaining
+        r['overpayment'] = overpayment
+        r['credit_total'] = credit_amt
+        receipts_data.append(r)
+
     conn.close()
-    return render_template('receipts_list.html', receipts=receipts, settings=settings)
+    return render_template('receipts_list.html', receipts=receipts_data, settings=settings)
 
 
 @app.route('/receipts/create', methods=['GET','POST'])
