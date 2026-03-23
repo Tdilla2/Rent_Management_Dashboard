@@ -103,9 +103,10 @@
                     <table class="table table-sm" id="lineItemsTable">
                         <thead>
                             <tr>
-                                <th style="width:50%">Description</th>
-                                <th style="width:30%">Amount ($)</th>
-                                <th style="width:20%"></th>
+                                <th style="width:45%">Description</th>
+                                <th style="width:25%">Amount ($)</th>
+                                <th style="width:15%">Credit?</th>
+                                <th style="width:15%"></th>
                             </tr>
                         </thead>
                         <tbody id="lineItems">
@@ -121,6 +122,7 @@
                                     <input type="text" name="item_custom_0" class="form-control form-control-sm mt-1" style="display:none" placeholder="Enter description">
                                 </td>
                                 <td><input type="number" name="item_amt_0" class="form-control form-control-sm item-amount" step="0.01" value="0" oninput="updateTotal()"></td>
+                                <td class="text-center"><input type="checkbox" name="item_credit_0" class="form-check-input" title="Record as credit for this renter"></td>
                                 <td></td>
                             </tr>
                         </tbody>
@@ -304,6 +306,7 @@ function addLineItem() {
             <input type="text" name="item_custom_${lineIdx}" class="form-control form-control-sm mt-1" style="display:none" placeholder="Enter description">
         </td>
         <td><input type="number" name="item_amt_${lineIdx}" class="form-control form-control-sm item-amount" step="0.01" value="0" oninput="updateTotal()"></td>
+        <td class="text-center"><input type="checkbox" name="item_credit_${lineIdx}" class="form-check-input" title="Record as credit for this renter"></td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove(); updateTotal();"><i class="bi bi-trash"></i></button></td>
     `;
     tbody.appendChild(row);

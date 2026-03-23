@@ -1026,12 +1026,16 @@ def create_receipt():
 
         # Collect line items from form
         line_items = []
+        credit_items = []
         i = 0
         while f'item_desc_{i}' in request.form:
             desc = request.form.get(f'item_desc_{i}', '').strip()
             amt = float(request.form.get(f'item_amt_{i}', 0))
+            is_credit = request.form.get(f'item_credit_{i}', '') == 'on'
             if desc and amt > 0:
                 line_items.append((desc, amt))
+                if is_credit:
+                    credit_items.append((desc, amt))
             i += 1
         if not line_items:
             amount = float(request.form.get('amount', 0))
@@ -1086,6 +1090,14 @@ def create_receipt():
             cur.execute(
                 "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
                 (receipt_id, desc, month, amt)
+            )
+
+        # Record credits in the credits table
+        for desc, amt in credit_items:
+            cur.execute(
+                "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
+                (renter_id, pay_date or date.today().isoformat(), amt,
+                 f"{desc} (Receipt #{rec_num})", 'credit')
             )
 
         # Update payments table for standard payment receipts
@@ -1318,12 +1330,21 @@ def credits_list():
     conn = get_db()
     settings = get_settings(conn)
     cur = conn.cursor()
-    cur.execute('''
-        SELECT credits.*, renters.name as renter_name, renters.unit
-        FROM credits
-        JOIN renters ON credits.renter_id = renters.id
-        ORDER BY credits.id DESC
-    ''')
+    renter_filter = request.args.get('renter_id', 0, type=int)
+
+    if renter_filter:
+        cur.execute('''
+            SELECT credits.*, renters.name as renter_name, renters.unit
+            FROM credits JOIN renters ON credits.renter_id = renters.id
+            WHERE credits.renter_id = %s
+            ORDER BY credits.id DESC
+        ''', (renter_filter,))
+    else:
+        cur.execute('''
+            SELECT credits.*, renters.name as renter_name, renters.unit
+            FROM credits JOIN renters ON credits.renter_id = renters.id
+            ORDER BY credits.id DESC
+        ''')
     credits = cur.fetchall()
     cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY name")
     renters = cur.fetchall()
@@ -1331,7 +1352,7 @@ def credits_list():
     conn.close()
     return render_template('credits.html', credits=credits, renters=renters,
                            total_credits=total_credits, settings=settings,
-                           today=date.today().isoformat())
+                           today=date.today().isoformat(), renter_filter=renter_filter)
 
 
 @app.route('/credits/add', methods=['POST'])

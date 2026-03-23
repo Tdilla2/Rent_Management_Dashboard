@@ -59,11 +59,19 @@
                             <li><a class="dropdown-item" href="{{ url_for('account_statement_report') }}"><i class="bi bi-file-earmark-ruled"></i> Account Statements</a></li>
                         </ul>
                     </li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('fee_schedule') }}"><i class="bi bi-currency-dollar"></i> Fees</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_page') }}"><i class="bi bi-gear"></i> Settings</a></li>
-                    {% if g.user and g.user.role == 'admin' %}
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('users_list') }}"><i class="bi bi-people-fill"></i> Users</a></li>
-                    {% endif %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-gear"></i> Settings
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('settings_page') }}"><i class="bi bi-sliders"></i> General Settings</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('fee_schedule') }}"><i class="bi bi-currency-dollar"></i> Fee Schedule</a></li>
+                            {% if g.user and g.user.role == 'admin' %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('users_list') }}"><i class="bi bi-people-fill"></i> User Management</a></li>
+                            {% endif %}
+                        </ul>
+                    </li>
                 </ul>
                 {% if g.user %}
                 <ul class="navbar-nav">
