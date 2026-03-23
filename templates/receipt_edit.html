@@ -49,7 +49,7 @@
                         </div>
                     </div>
 
-                    <h6 class="fw-bold mb-2">Line Items</h6>
+                    <h6 class="fw-bold mb-2">Charge Items</h6>
                     <table class="table table-sm" id="itemsTable">
                         <thead>
                             <tr>
@@ -60,11 +60,12 @@
                             </tr>
                         </thead>
                         <tbody id="itemsBody">
-                            {% for item in items %}
+                            {% set ns = namespace(idx=0) %}
+                            {% for item in items if item.amount|float > 0 %}
                             <tr>
-                                <td><input type="text" name="item_desc_{{ loop.index0 }}" class="form-control form-control-sm" value="{{ item.description or '' }}" required></td>
-                                <td><input type="text" name="item_period_{{ loop.index0 }}" class="form-control form-control-sm" value="{{ item.period or '' }}"></td>
-                                <td><input type="number" name="item_amt_{{ loop.index0 }}" class="form-control form-control-sm item-amount" step="0.01" value="{{ item.amount }}" required oninput="calcTotal()"></td>
+                                <td><input type="text" name="item_desc_{{ ns.idx }}" class="form-control form-control-sm" value="{{ item.description or '' }}" required></td>
+                                <td><input type="text" name="item_period_{{ ns.idx }}" class="form-control form-control-sm" value="{{ item.period or '' }}"></td>
+                                <td><input type="number" name="item_amt_{{ ns.idx }}" class="form-control form-control-sm item-amount" step="0.01" value="{{ item.amount }}" required oninput="calcTotal()"></td>
                                 <td>
                                     {% if not loop.first %}
                                     <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove(); calcTotal();">
@@ -73,6 +74,7 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                            {% set ns.idx = ns.idx + 1 %}
                             {% endfor %}
                         </tbody>
                         <tfoot>
@@ -86,6 +88,25 @@
                     <button type="button" class="btn btn-sm btn-outline-success mb-3" onclick="addItem()">
                         <i class="bi bi-plus-lg"></i> Add Line Item
                     </button>
+
+                    <!-- Existing Credits (read-only display) -->
+                    {% set credit_items = items|selectattr('amount', 'lt', 0)|list if items else [] %}
+                    {% if credit_items %}
+                    <div class="card bg-light border-info mb-3">
+                        <div class="card-body py-2 px-3">
+                            <h6 class="text-info mb-2"><i class="bi bi-arrow-return-left"></i> Existing Credits on this Receipt</h6>
+                            <table class="table table-sm mb-0">
+                                {% for item in credit_items %}
+                                <tr>
+                                    <td>{{ item.description }}</td>
+                                    <td>{{ item.period or '' }}</td>
+                                    <td class="text-end text-info fw-bold">${{ "{:,.2f}".format(item.amount|float|abs) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
 
                     <!-- Add Credit -->
                     <div class="card bg-light mb-3">
@@ -117,7 +138,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-let idx = {{ items|length }};
+let idx = {{ items|selectattr('amount', 'gt', 0)|list|length }};
 
 const feeOptions = `
     <option value="">-- Select to add --</option>

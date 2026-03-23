@@ -1364,8 +1364,8 @@ def edit_receipt(receipt_id):
              new_month, request.form.get('invoice_ref', ''), new_type, receipt_id)
         )
 
-        # ── Step 2: Delete existing items and re-insert ──
-        cur.execute("DELETE FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
+        # ── Step 2: Delete only charge items (positive amounts), keep existing credits ──
+        cur.execute("DELETE FROM receipt_items WHERE receipt_id=%s AND amount > 0", (receipt_id,))
         i = 0
         while f'item_desc_{i}' in request.form:
             desc = request.form.get(f'item_desc_{i}', '').strip()
