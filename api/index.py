@@ -3,11 +3,17 @@ import functools
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+import uuid
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'xlsx', 'xls', 'csv'}
 
 MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 FULL_MONTHS = ['January','February','March','April','May','June',
@@ -151,6 +157,19 @@ def init_db():
             description TEXT DEFAULT '',
             credit_type TEXT DEFAULT 'credit',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Renter documents table
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS renter_documents (
+            id SERIAL PRIMARY KEY,
+            renter_id INTEGER NOT NULL REFERENCES renters(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            doc_type TEXT DEFAULT 'other',
+            description TEXT DEFAULT '',
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -679,9 +698,11 @@ def edit_renter(renter_id):
         return redirect(url_for('renters_list'))
     cur.execute("SELECT * FROM renters WHERE id=%s", (renter_id,))
     renter = cur.fetchone()
+    cur.execute("SELECT * FROM renter_documents WHERE renter_id=%s ORDER BY uploaded_at DESC", (renter_id,))
+    documents = cur.fetchall()
     settings = get_settings(conn)
     conn.close()
-    return render_template('renter_form.html', renter=renter, settings=settings)
+    return render_template('renter_form.html', renter=renter, settings=settings, documents=documents)
 
 
 @app.route('/renters/<int:renter_id>/toggle-active', methods=['POST'])
@@ -711,6 +732,72 @@ def delete_renter(renter_id):
     conn.close()
     flash('Renter deleted.', 'success')
     return redirect(url_for('renters_list'))
+
+
+@app.route('/renters/<int:renter_id>/upload', methods=['POST'])
+@login_required
+def upload_document(renter_id):
+    if 'document' not in request.files:
+        flash('No file selected.', 'danger')
+        return redirect(url_for('edit_renter', renter_id=renter_id))
+
+    file = request.files['document']
+    if file.filename == '':
+        flash('No file selected.', 'danger')
+        return redirect(url_for('edit_renter', renter_id=renter_id))
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_EXTENSIONS:
+        flash(f'File type .{ext} not allowed. Allowed: {", ".join(ALLOWED_EXTENSIONS)}', 'danger')
+        return redirect(url_for('edit_renter', renter_id=renter_id))
+
+    original_name = secure_filename(file.filename)
+    unique_name = f"{uuid.uuid4().hex}_{original_name}"
+    file.save(os.path.join(UPLOAD_FOLDER, unique_name))
+
+    doc_type = request.form.get('doc_type', 'other')
+    description = request.form.get('doc_description', '').strip()
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO renter_documents (renter_id, filename, original_name, doc_type, description) VALUES (%s,%s,%s,%s,%s)",
+        (renter_id, unique_name, original_name, doc_type, description)
+    )
+    conn.commit()
+    conn.close()
+    flash(f'Document "{original_name}" uploaded.', 'success')
+    return redirect(url_for('edit_renter', renter_id=renter_id))
+
+
+@app.route('/uploads/<filename>')
+@login_required
+def download_document(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+
+@app.route('/documents/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def delete_document(doc_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM renter_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    if not doc:
+        conn.close()
+        flash('Document not found.', 'danger')
+        return redirect(url_for('renters_list'))
+
+    renter_id = doc['renter_id']
+    filepath = os.path.join(UPLOAD_FOLDER, doc['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    cur.execute("DELETE FROM renter_documents WHERE id=%s", (doc_id,))
+    conn.commit()
+    conn.close()
+    flash('Document deleted.', 'success')
+    return redirect(url_for('edit_renter', renter_id=renter_id))
 
 
 @app.route('/payments/<int:renter_id>', methods=['GET','POST'])

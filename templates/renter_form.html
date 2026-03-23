@@ -57,6 +57,104 @@
                 </form>
             </div>
         </div>
+
+        {% if renter %}
+        <!-- Documents Section -->
+        <div class="card mt-4">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-folder"></i> Documents</h5>
+            </div>
+            <div class="card-body">
+                <!-- Upload Form -->
+                <form method="post" action="{{ url_for('upload_document', renter_id=renter.id) }}" enctype="multipart/form-data" class="mb-4">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label">Document Type</label>
+                            <select name="doc_type" class="form-select form-select-sm">
+                                <option value="lease">Lease Agreement</option>
+                                <option value="id">ID / License</option>
+                                <option value="application">Application</option>
+                                <option value="inspection">Inspection Report</option>
+                                <option value="notice">Notice</option>
+                                <option value="correspondence">Correspondence</option>
+                                <option value="other" selected>Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Description <span class="text-muted">(optional)</span></label>
+                            <input type="text" name="doc_description" class="form-control form-control-sm" placeholder="e.g. 2026 Lease">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">File</label>
+                            <input type="file" name="document" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-sm btn-success w-100"><i class="bi bi-upload"></i> Upload</button>
+                        </div>
+                    </div>
+                    <div class="form-text">Allowed: PDF, DOC, DOCX, JPG, PNG, GIF, TXT, XLSX, XLS, CSV</div>
+                </form>
+
+                <!-- Documents List -->
+                {% if documents %}
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>File</th>
+                            <th>Description</th>
+                            <th>Uploaded</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in documents %}
+                        <tr>
+                            <td>
+                                {% if doc.doc_type == 'lease' %}
+                                    <span class="badge bg-primary">Lease</span>
+                                {% elif doc.doc_type == 'id' %}
+                                    <span class="badge bg-info text-dark">ID</span>
+                                {% elif doc.doc_type == 'application' %}
+                                    <span class="badge bg-success">Application</span>
+                                {% elif doc.doc_type == 'inspection' %}
+                                    <span class="badge bg-warning text-dark">Inspection</span>
+                                {% elif doc.doc_type == 'notice' %}
+                                    <span class="badge bg-danger">Notice</span>
+                                {% elif doc.doc_type == 'correspondence' %}
+                                    <span class="badge bg-secondary">Correspondence</span>
+                                {% else %}
+                                    <span class="badge bg-light text-dark border">Other</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('download_document', filename=doc.filename) }}" target="_blank">
+                                    <i class="bi bi-file-earmark"></i> {{ doc.original_name }}
+                                </a>
+                            </td>
+                            <td>{{ doc.description or '—' }}</td>
+                            <td><small class="text-muted">{{ doc.uploaded_at.strftime('%Y-%m-%d') if doc.uploaded_at else '' }}</small></td>
+                            <td>
+                                <div class="d-flex gap-1">
+                                    <a href="{{ url_for('download_document', filename=doc.filename) }}" class="btn btn-sm btn-outline-primary" target="_blank">
+                                        <i class="bi bi-download"></i>
+                                    </a>
+                                    <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}"
+                                          onsubmit="return confirm('Delete this document?');" style="display:inline;">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted text-center mb-0">No documents uploaded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
