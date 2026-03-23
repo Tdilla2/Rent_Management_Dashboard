@@ -1677,20 +1677,32 @@ def credits_list():
     settings = get_settings(conn)
     cur = conn.cursor()
     renter_filter = request.args.get('renter_id', 0, type=int)
+    type_filter = request.args.get('credit_type', '')
+    date_from = request.args.get('date_from', '')
+    date_to = request.args.get('date_to', '')
+
+    query = '''
+        SELECT credits.*, renters.name as renter_name, renters.unit
+        FROM credits JOIN renters ON credits.renter_id = renters.id
+        WHERE 1=1
+    '''
+    params = []
 
     if renter_filter:
-        cur.execute('''
-            SELECT credits.*, renters.name as renter_name, renters.unit
-            FROM credits JOIN renters ON credits.renter_id = renters.id
-            WHERE credits.renter_id = %s
-            ORDER BY credits.id DESC
-        ''', (renter_filter,))
-    else:
-        cur.execute('''
-            SELECT credits.*, renters.name as renter_name, renters.unit
-            FROM credits JOIN renters ON credits.renter_id = renters.id
-            ORDER BY credits.id DESC
-        ''')
+        query += ' AND credits.renter_id = %s'
+        params.append(renter_filter)
+    if type_filter:
+        query += ' AND credits.credit_type = %s'
+        params.append(type_filter)
+    if date_from:
+        query += ' AND credits.credit_date >= %s'
+        params.append(date_from)
+    if date_to:
+        query += ' AND credits.credit_date <= %s'
+        params.append(date_to)
+
+    query += ' ORDER BY credits.credit_date DESC, credits.id DESC'
+    cur.execute(query, params)
     credits = cur.fetchall()
     cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY name")
     renters = cur.fetchall()
@@ -1698,7 +1710,9 @@ def credits_list():
     conn.close()
     return render_template('credits.html', credits=credits, renters=renters,
                            total_credits=total_credits, settings=settings,
-                           today=date.today().isoformat(), renter_filter=renter_filter)
+                           today=date.today().isoformat(),
+                           renter_filter=renter_filter, type_filter=type_filter,
+                           date_from=date_from, date_to=date_to)
 
 
 @app.route('/credits/add', methods=['POST'])
