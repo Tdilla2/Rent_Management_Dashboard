@@ -1026,16 +1026,12 @@ def create_receipt():
 
         # Collect line items from form
         line_items = []
-        credit_items = []
         i = 0
         while f'item_desc_{i}' in request.form:
             desc = request.form.get(f'item_desc_{i}', '').strip()
             amt = float(request.form.get(f'item_amt_{i}', 0))
-            is_credit = request.form.get(f'item_credit_{i}', '') == 'on'
             if desc and amt > 0:
                 line_items.append((desc, amt))
-                if is_credit:
-                    credit_items.append((desc, amt))
             i += 1
         if not line_items:
             amount = float(request.form.get('amount', 0))
@@ -1044,8 +1040,9 @@ def create_receipt():
 
         total_amount = sum(amt for _, amt in line_items)
 
-        # Server-side validation for regular payments (not deposits)
+        # Calculate overpayment / credit
         month_num = MONTHS.index(month) + 1 if month in MONTHS else None
+        overpayment = 0.0
         if month_num and renter and receipt_type == 'payment':
             pay_year = settings['current_year']
             if pay_date:
@@ -1075,10 +1072,8 @@ def create_receipt():
                         total_due = max(float(inv_total['total']), total_due)
 
             remaining = total_due - already_paid
-            if total_amount > remaining:
-                flash(f'Payment of ${total_amount:,.2f} exceeds remaining balance of ${remaining:,.2f}. Receipt not created.', 'danger')
-                conn.close()
-                return redirect(url_for('create_receipt'))
+            if total_amount > remaining and remaining >= 0:
+                overpayment = round(total_amount - remaining, 2)
 
         cur.execute(
             "INSERT INTO receipts (receipt_number, renter_id, payment_date, payment_method, month, invoice_ref, receipt_type) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
@@ -1092,12 +1087,16 @@ def create_receipt():
                 (receipt_id, desc, month, amt)
             )
 
-        # Record credits in the credits table
-        for desc, amt in credit_items:
+        # If overpayment, add a credit line item on the receipt and create credit entry
+        if overpayment > 0:
+            cur.execute(
+                "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
+                (receipt_id, f'Credit (Overpayment)', month, -overpayment)
+            )
             cur.execute(
                 "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
-                (renter_id, pay_date or date.today().isoformat(), amt,
-                 f"{desc} (Receipt #{rec_num})", 'credit')
+                (renter_id, pay_date or date.today().isoformat(), overpayment,
+                 f"Overpayment on Receipt #{rec_num} ({month})", 'credit')
             )
 
         # Update payments table for standard payment receipts

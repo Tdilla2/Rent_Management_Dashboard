@@ -100,13 +100,15 @@
 
                     <!-- Line Items -->
                     <h6 class="mt-4 mb-2">Payment Line Items</h6>
+                    <div class="alert alert-info py-2 small mb-2">
+                        <i class="bi bi-info-circle"></i> If the payment exceeds the balance due, the overpayment will automatically be recorded as a <strong>credit</strong> on the receipt and in the Credits tab.
+                    </div>
                     <table class="table table-sm" id="lineItemsTable">
                         <thead>
                             <tr>
-                                <th style="width:45%">Description</th>
-                                <th style="width:25%">Amount ($)</th>
-                                <th style="width:15%">Credit?</th>
-                                <th style="width:15%"></th>
+                                <th style="width:50%">Description</th>
+                                <th style="width:30%">Amount ($)</th>
+                                <th style="width:20%"></th>
                             </tr>
                         </thead>
                         <tbody id="lineItems">
@@ -122,7 +124,6 @@
                                     <input type="text" name="item_custom_0" class="form-control form-control-sm mt-1" style="display:none" placeholder="Enter description">
                                 </td>
                                 <td><input type="number" name="item_amt_0" class="form-control form-control-sm item-amount" step="0.01" value="0" oninput="updateTotal()"></td>
-                                <td class="text-center"><input type="checkbox" name="item_credit_0" class="form-check-input" title="Record as credit for this renter"></td>
                                 <td></td>
                             </tr>
                         </tbody>
@@ -306,7 +307,6 @@ function addLineItem() {
             <input type="text" name="item_custom_${lineIdx}" class="form-control form-control-sm mt-1" style="display:none" placeholder="Enter description">
         </td>
         <td><input type="number" name="item_amt_${lineIdx}" class="form-control form-control-sm item-amount" step="0.01" value="0" oninput="updateTotal()"></td>
-        <td class="text-center"><input type="checkbox" name="item_credit_${lineIdx}" class="form-check-input" title="Record as credit for this renter"></td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove(); updateTotal();"><i class="bi bi-trash"></i></button></td>
     `;
     tbody.appendChild(row);
@@ -331,14 +331,19 @@ function updateTotal() {
         err.style.display = 'block';
         err.textContent = 'Total must be greater than $0.';
         btn.disabled = true;
-    } else if (!isDeposit && !hasInvoice && currentRemaining !== null && currentRemaining <= 0) {
+    } else if (!isDeposit && !hasInvoice && currentRemaining !== null && currentRemaining <= 0 && total > 0) {
         err.style.display = 'block';
-        err.textContent = 'This month is already paid in full.';
-        btn.disabled = true;
+        err.textContent = 'This month is paid in full. Any payment will be recorded as a credit.';
+        err.className = 'text-info mb-2';
+        err.style.fontWeight = '600';
+        btn.disabled = false;
     } else if (!isDeposit && !hasInvoice && currentRemaining !== null && total > currentRemaining) {
+        const overpay = (total - currentRemaining).toFixed(2);
         err.style.display = 'block';
-        err.textContent = `Total $${total.toFixed(2)} exceeds remaining balance of $${currentRemaining.toFixed(2)}`;
-        btn.disabled = true;
+        err.textContent = `Payment exceeds balance by $${overpay} — this will be recorded as a credit.`;
+        err.className = 'text-info mb-2';
+        err.style.fontWeight = '600';
+        btn.disabled = false;
     } else {
         err.style.display = 'none';
         btn.disabled = false;
@@ -354,11 +359,7 @@ document.getElementById('receiptForm').addEventListener('submit', function(e) {
     const isDeposit = receiptType === 'deposit';
     const hasInvoice = currentInvoiceId > 0;
 
-    if (!isDeposit && !hasInvoice && currentRemaining !== null && (total > currentRemaining || currentRemaining <= 0)) {
-        e.preventDefault();
-        alert('Payment amount exceeds the remaining balance.');
-        return;
-    }
+    // Overpayments are now allowed — they create credits automatically
 
     // Replace __custom__ select values with the custom text input
     document.querySelectorAll('select[name^="item_desc_"]').forEach(sel => {
