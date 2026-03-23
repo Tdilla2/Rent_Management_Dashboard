@@ -59,6 +59,9 @@
                         {% else %}
                         <span class="text-success">Paid in Full</span>
                         {% endif %}
+                        {% if rec.renter_credit_balance > 0 %}
+                        <br><small class="text-info"><i class="bi bi-wallet2"></i> ${{ "{:,.2f}".format(rec.renter_credit_balance) }} credit bal</small>
+                        {% endif %}
                     </td>
                     <td>
                         {% if rec.deposit_confirmed %}

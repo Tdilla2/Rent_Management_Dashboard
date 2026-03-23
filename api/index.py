@@ -1274,9 +1274,14 @@ def receipts_list():
             elif balance < 0:
                 overpayment = abs(balance)
 
+        # Get renter's total credit balance
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total FROM credits WHERE renter_id=%s", (renter_id,))
+        renter_credit = float(cur.fetchone()['total'])
+
         r['remaining'] = remaining
         r['overpayment'] = overpayment
         r['credit_total'] = credit_amt
+        r['renter_credit_balance'] = renter_credit
         receipts_data.append(r)
 
     conn.close()
