@@ -72,22 +72,37 @@
                         {% endfor %}
                     </tbody>
                     <tfoot>
-                        <tr class="table-success">
-                            <td colspan="2" class="text-end"><strong>Total Received</strong></td>
+                        <tr class="table-primary">
+                            <td colspan="2" class="text-end"><strong>Total Charges</strong></td>
                             <td class="text-end"><strong>${{ "{:,.2f}".format(payment_total) }}</strong></td>
+                        </tr>
+                        <tr class="table-success">
+                            <td colspan="2" class="text-end"><strong>Amount Paid</strong></td>
+                            <td class="text-end"><strong>${{ "{:,.2f}".format(payment_total) }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end"><strong>Receipt Balance</strong></td>
+                            <td class="text-end"><span class="text-success"><strong>$0.00</strong></span></td>
                         </tr>
                         {% if credit_total > 0 %}
                         <tr class="table-info">
                             <td colspan="2" class="text-end"><strong>Credit Issued to Renter</strong></td>
-                            <td class="text-end text-info"><strong>${{ "{:,.2f}".format(credit_total) }}</strong></td>
+                            <td class="text-end"><span class="text-info fw-bold">${{ "{:,.2f}".format(credit_total) }}</span></td>
                         </tr>
                         {% endif %}
+                        <tr>
+                            <td colspan="3"><hr class="my-1"></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end">Monthly Rent</td>
+                            <td class="text-end">${{ "{:,.2f}".format(monthly_rent) }}</td>
+                        </tr>
                         <tr>
                             <td colspan="2" class="text-end"><strong>Total Paid This Month</strong></td>
                             <td class="text-end"><strong>${{ "{:,.2f}".format(total_paid_month) }}</strong></td>
                         </tr>
                         <tr>
-                            <td colspan="2" class="text-end">Remaining Balance</td>
+                            <td colspan="2" class="text-end"><strong>Remaining Rent Balance</strong></td>
                             <td class="text-end">
                                 {% set balance = monthly_rent + fees_month - total_paid_month %}
                                 {% if balance > 0 %}
@@ -95,28 +110,7 @@
                                 {% elif balance < 0 %}
                                 <span class="text-success"><strong>${{ "{:,.2f}".format(balance|abs) }} credit</strong></span>
                                 {% else %}
-                                <span class="text-success"><strong>$0.00</strong></span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% if credit_total > 0 %}
-                        <tr>
-                            <td colspan="2" class="text-end"><strong>Renter Credit Balance</strong></td>
-                            <td class="text-end">
-                                <span class="text-success"><strong>${{ "{:,.2f}".format(credit_total) }} credit</strong></span>
-                            </td>
-                        </tr>
-                        {% endif %}
-                        <tr>
-                            <td colspan="2" class="text-end"><strong>Payment Status</strong></td>
-                            <td class="text-end">
-                                {% set total_due = monthly_rent + fees_month %}
-                                {% if total_paid_month >= total_due %}
-                                <span class="badge bg-success">Paid in Full</span>
-                                {% elif total_paid_month > 0 %}
-                                <span class="badge bg-warning text-dark">Partial - ${{ "{:,.2f}".format(total_due - total_paid_month) }} remaining</span>
-                                {% else %}
-                                <span class="badge bg-danger">Unpaid</span>
+                                <span class="text-success"><strong>$0.00 — Paid in Full</strong></span>
                                 {% endif %}
                             </td>
                         </tr>
