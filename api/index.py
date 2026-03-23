@@ -1259,12 +1259,29 @@ def edit_receipt(receipt_id):
             desc = request.form.get(f'item_desc_{i}', '').strip()
             period = request.form.get(f'item_period_{i}', '').strip()
             amt = float(request.form.get(f'item_amt_{i}', 0))
-            if desc and amt > 0:
+            if desc and amt != 0:
                 cur.execute(
                     "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
                     (receipt_id, desc, period, amt)
                 )
             i += 1
+
+        # Handle credit from the credit field
+        credit_amt = float(request.form.get('credit_amount', 0))
+        credit_desc = request.form.get('credit_description', '').strip()
+        month_val = request.form.get('month', '')
+        if credit_amt > 0:
+            cur.execute(
+                "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
+                (receipt_id, f'Credit: {credit_desc or "Applied Credit"}', month_val, -credit_amt)
+            )
+            pay_date = request.form.get('payment_date', '') or date.today().isoformat()
+            cur.execute(
+                "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
+                (receipt['renter_id'], pay_date, credit_amt,
+                 f"{credit_desc or 'Credit'} (Receipt #{receipt['receipt_number']})", 'credit')
+            )
+
         conn.commit()
         conn.close()
         flash('Receipt updated.', 'success')
@@ -1272,9 +1289,11 @@ def edit_receipt(receipt_id):
 
     cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s ORDER BY id", (receipt_id,))
     items = cur.fetchall()
+    cur.execute("SELECT * FROM fee_schedule ORDER BY id")
+    fee_types = cur.fetchall()
     conn.close()
     return render_template('receipt_edit.html', receipt=receipt, items=items,
-                           settings=settings, months=MONTHS)
+                           settings=settings, months=MONTHS, fee_types=fee_types)
 
 
 @app.route('/receipts/<int:receipt_id>/confirm-deposit', methods=['POST'])

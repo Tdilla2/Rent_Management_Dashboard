@@ -87,6 +87,24 @@
                         <i class="bi bi-plus-lg"></i> Add Line Item
                     </button>
 
+                    <!-- Add Credit -->
+                    <div class="card bg-light mb-3">
+                        <div class="card-body py-2 px-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-5">
+                                    <label class="form-label mb-0 fw-bold"><i class="bi bi-arrow-return-left text-success"></i> Add Credit to Receipt</label>
+                                    <small class="text-muted d-block">This will add a credit line item and record it in the Credits tab</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" name="credit_amount" id="creditAmount" class="form-control form-control-sm" step="0.01" min="0" value="0" placeholder="0.00" oninput="calcTotal()">
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="text" name="credit_description" class="form-control form-control-sm" placeholder="Reason (optional)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-success"><i class="bi bi-save"></i> Save Changes</button>
                         <a href="{{ url_for('view_receipt', receipt_id=receipt.id) }}" class="btn btn-secondary">Cancel</a>
@@ -101,12 +119,27 @@
 <script>
 let idx = {{ items|length }};
 
+const feeOptions = `
+    <option value="">-- Select to add --</option>
+    <option value="Rent" data-amount="0">Rent</option>
+    {% for fee in fee_types %}
+    <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }} (${{ "{:,.2f}".format(fee.amount) }})</option>
+    {% endfor %}
+    <option value="__custom__" data-amount="0">Other (custom)...</option>
+`;
+
 function addItem() {
     const tbody = document.getElementById('itemsBody');
     const row = document.createElement('tr');
     row.innerHTML = `
-        <td><input type="text" name="item_desc_${idx}" class="form-control form-control-sm" required></td>
-        <td><input type="text" name="item_period_${idx}" class="form-control form-control-sm"></td>
+        <td>
+            <select class="form-select form-select-sm" onchange="fillNewItem(this, ${idx})">
+                ${feeOptions}
+            </select>
+            <input type="hidden" name="item_desc_${idx}" class="item-desc-hidden" value="">
+            <input type="text" name="item_desc_custom_${idx}" class="form-control form-control-sm mt-1" style="display:none" placeholder="Enter description">
+        </td>
+        <td><input type="text" name="item_period_${idx}" class="form-control form-control-sm" value="{{ receipt.month or '' }}"></td>
         <td><input type="number" name="item_amt_${idx}" class="form-control form-control-sm item-amount" step="0.01" value="0" required oninput="calcTotal()"></td>
         <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove(); calcTotal();"><i class="bi bi-trash"></i></button></td>
     `;
@@ -114,12 +147,41 @@ function addItem() {
     idx++;
 }
 
+function fillNewItem(selectEl, i) {
+    const hidden = document.querySelector(`input[name="item_desc_${i}"]`);
+    const custom = document.querySelector(`input[name="item_desc_custom_${i}"]`);
+    const amtInput = document.querySelector(`input[name="item_amt_${i}"]`);
+    const opt = selectEl.options[selectEl.selectedIndex];
+
+    if (selectEl.value === '__custom__') {
+        custom.style.display = 'block';
+        custom.required = true;
+        custom.oninput = function() { hidden.value = this.value; };
+        hidden.value = '';
+        amtInput.value = '0';
+    } else {
+        custom.style.display = 'none';
+        custom.required = false;
+        hidden.value = selectEl.value;
+        const prefill = parseFloat(opt.getAttribute('data-amount')) || 0;
+        if (prefill > 0) amtInput.value = prefill.toFixed(2);
+        if (selectEl.value === 'Rent') amtInput.value = {{ receipt.monthly_rent|float }}.toFixed(2);
+    }
+    calcTotal();
+}
+
 function calcTotal() {
     let total = 0;
     document.querySelectorAll('.item-amount').forEach(inp => {
         total += parseFloat(inp.value) || 0;
     });
-    document.getElementById('totalDisplay').textContent = '$' + total.toFixed(2);
+    const creditAmt = parseFloat(document.getElementById('creditAmount').value) || 0;
+    if (creditAmt > 0) {
+        document.getElementById('totalDisplay').innerHTML = '$' + total.toFixed(2) +
+            ' <small class="text-success">- $' + creditAmt.toFixed(2) + ' credit</small>';
+    } else {
+        document.getElementById('totalDisplay').textContent = '$' + total.toFixed(2);
+    }
 }
 
 calcTotal();
