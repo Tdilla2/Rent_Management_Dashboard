@@ -1188,7 +1188,12 @@ def view_receipt(receipt_id):
         return redirect(url_for('receipts_list'))
     cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s ORDER BY id", (receipt_id,))
     items = cur.fetchall()
-    total = sum(float(i['amount'] or 0) for i in items)
+
+    # Separate payment items from credits
+    payment_total = sum(float(i['amount'] or 0) for i in items if float(i['amount'] or 0) > 0)
+    credit_total = sum(abs(float(i['amount'] or 0)) for i in items if float(i['amount'] or 0) < 0)
+    net_total = payment_total - credit_total
+
     monthly_rent = float(receipt['monthly_rent'] or 0)
 
     month_name = receipt['month'] or ''
@@ -1203,26 +1208,21 @@ def view_receipt(receipt_id):
             except (IndexError, ValueError):
                 pass
 
-        cur.execute('''
-            SELECT COALESCE(SUM(ri.amount), 0) as total
-            FROM receipt_items ri
-            JOIN receipts r ON ri.receipt_id = r.id
-            WHERE r.renter_id = %s AND r.month = %s AND r.id <= %s
-        ''', (receipt['renter_id'], month_name, receipt_id))
-        result = cur.fetchone()
-        total_paid_month = float(result['total'] or 0)
-
+        # Get total paid from payments table (accurate source of truth)
         cur.execute(
-            "SELECT fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+            "SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
             (receipt['renter_id'], pay_year, month_num)
         )
         pay = cur.fetchone()
         if pay:
+            total_paid_month = float(pay['amount_paid'] or 0)
             fees_month = float(pay['fees'] or 0)
 
     conn.close()
     return render_template('receipt_view.html', receipt=receipt, items=items,
-                           total=total, total_paid_month=total_paid_month,
+                           payment_total=payment_total, credit_total=credit_total,
+                           net_total=net_total,
+                           total_paid_month=total_paid_month,
                            fees_month=fees_month, monthly_rent=monthly_rent,
                            settings=settings)
 
