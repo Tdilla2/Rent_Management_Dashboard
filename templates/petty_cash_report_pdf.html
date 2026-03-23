@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Petty Cash Report - {{ month_name }} {{ year }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; margin: 30px; color: #333; }
+        h1 { font-size: 20px; margin-bottom: 2px; }
+        h2 { font-size: 16px; color: #555; margin-top: 0; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+        .company { font-size: 18px; font-weight: bold; }
+        .address { font-size: 11px; color: #666; }
+        .summary { display: flex; justify-content: space-between; margin-bottom: 20px; }
+        .summary-box { border: 1px solid #ddd; padding: 10px 20px; text-align: center; width: 30%; }
+        .summary-box .label { font-size: 10px; text-transform: uppercase; color: #888; }
+        .summary-box .value { font-size: 18px; font-weight: bold; }
+        .green { color: #198754; }
+        .red { color: #dc3545; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        th { background: #f0f0f0; padding: 6px 8px; text-align: left; border: 1px solid #ddd; font-size: 11px; }
+        td { padding: 5px 8px; border: 1px solid #ddd; }
+        .text-end { text-align: right; }
+        .cat-header { background: #e9ecef; padding: 6px 10px; font-weight: bold; margin-top: 15px; margin-bottom: 0; border: 1px solid #ddd; border-bottom: none; }
+        .subtotal td { font-weight: bold; background: #f8f9fa; }
+        .footer { text-align: center; margin-top: 30px; font-size: 10px; color: #999; border-top: 1px solid #ddd; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="company">{{ settings.company_name }}</div>
+        <div class="address">{{ settings.company_address }}</div>
+        <h1>Petty Cash Report</h1>
+        <h2>{{ month_name }} {{ year }}</h2>
+    </div>
+
+    <div class="summary">
+        <div class="summary-box">
+            <div class="label">Total In</div>
+            <div class="value green">${{ "{:,.2f}".format(total_in) }}</div>
+        </div>
+        <div class="summary-box">
+            <div class="label">Total Out</div>
+            <div class="value red">${{ "{:,.2f}".format(total_out) }}</div>
+        </div>
+        <div class="summary-box">
+            <div class="label">Net Balance</div>
+            <div class="value {{ 'green' if balance >= 0 else 'red' }}">${{ "{:,.2f}".format(balance) }}</div>
+        </div>
+    </div>
+
+    {% if categories %}
+    {% for cat_name, cat_data in categories.items() %}
+    <div class="cat-header">{{ cat_name|title }}</div>
+    <table>
+        <thead>
+            <tr>
+                <th style="width:20%">Date</th>
+                <th style="width:40%">Description</th>
+                <th style="width:20%" class="text-end">In</th>
+                <th style="width:20%" class="text-end">Out</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in cat_data.items %}
+            <tr>
+                <td>{{ t.transaction_date }}</td>
+                <td>{{ t.description }}</td>
+                <td class="text-end green">{{ "$" + "{:,.2f}".format(t.amount|float) if t.transaction_type == 'in' else '' }}</td>
+                <td class="text-end red">{{ "$" + "{:,.2f}".format(t.amount|float) if t.transaction_type == 'expense' else '' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="subtotal">
+                <td colspan="2" class="text-end">Subtotal:</td>
+                <td class="text-end green">${{ "{:,.2f}".format(cat_data.total_in) }}</td>
+                <td class="text-end red">${{ "{:,.2f}".format(cat_data.total_out) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+    {% endfor %}
+    {% else %}
+    <p>No petty cash transactions for {{ month_name }} {{ year }}.</p>
+    {% endif %}
+
+    <div class="footer">
+        <strong>Rent Management</strong> — Powered by <strong>GDI Digital Solutions</strong><br>
+        Generated on {{ today }}
+    </div>
+</body>
+</html>

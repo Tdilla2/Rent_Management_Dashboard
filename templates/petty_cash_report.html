@@ -13,7 +13,8 @@
             <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:90px">
             <button class="btn btn-sm btn-primary">Go</button>
         </form>
-        <button onclick="window.print()" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i> Print</button>
+        <button onclick="window.print()" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i> Print / PDF</button>
+        <a href="{{ url_for('petty_cash_report_pdf', month=month, year=year) }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-file-earmark-pdf"></i> Export PDF</a>
     </div>
 </div>
 

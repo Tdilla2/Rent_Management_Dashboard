@@ -3,8 +3,10 @@ import functools
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
+from io import BytesIO
+from xhtml2pdf import pisa
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -2134,6 +2136,59 @@ def petty_cash_report():
                            balance=total_in - total_out,
                            month=month, year=year, settings=settings,
                            month_name=FULL_MONTHS[month - 1])
+
+
+@app.route('/reports/petty-cash/pdf')
+@login_required
+def petty_cash_report_pdf():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', date.today().month, type=int)
+
+    start = f"{year}-{month:02d}-01"
+    if month == 12:
+        end = f"{year + 1}-01-01"
+    else:
+        end = f"{year}-{month + 1:02d}-01"
+
+    cur.execute(
+        "SELECT * FROM petty_cash WHERE transaction_date >= %s AND transaction_date < %s ORDER BY transaction_date, id",
+        (start, end)
+    )
+    transactions = cur.fetchall()
+
+    categories = {}
+    for t in transactions:
+        cat = t['category'] or 'miscellaneous'
+        if cat not in categories:
+            categories[cat] = {'items': [], 'total_in': 0, 'total_out': 0}
+        categories[cat]['items'].append(t)
+        if t['transaction_type'] == 'in':
+            categories[cat]['total_in'] += float(t['amount'])
+        else:
+            categories[cat]['total_out'] += float(t['amount'])
+
+    total_in = sum(c['total_in'] for c in categories.values())
+    total_out = sum(c['total_out'] for c in categories.values())
+    conn.close()
+
+    month_name = FULL_MONTHS[month - 1]
+    html = render_template('petty_cash_report_pdf.html', categories=categories,
+                           total_in=total_in, total_out=total_out,
+                           balance=total_in - total_out,
+                           month=month, year=year, settings=settings,
+                           month_name=month_name, today=date.today().isoformat())
+
+    pdf_buffer = BytesIO()
+    pisa.CreatePDF(html, dest=pdf_buffer)
+    pdf_buffer.seek(0)
+
+    response = make_response(pdf_buffer.read())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'attachment; filename=Petty_Cash_Report_{month_name}_{year}.pdf'
+    return response
 
 
 @app.route('/reports/closing-statement')
