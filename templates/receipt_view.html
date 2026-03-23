@@ -101,13 +101,19 @@
                                 {% set balance = total_due - total_paid_month %}
                                 {% if balance > 0 %}
                                 <span class="text-danger"><strong>${{ "{:,.2f}".format(balance) }} due</strong></span>
-                                {% elif balance < 0 %}
-                                <span class="text-success"><strong>${{ "{:,.2f}".format(balance|abs) }} credit</strong></span>
                                 {% else %}
                                 <span class="text-success"><strong>$0.00 — Paid in Full</strong></span>
                                 {% endif %}
                             </td>
                         </tr>
+                        {% if total_paid_month > total_due and total_due > 0 %}
+                        <tr>
+                            <td colspan="2" class="text-end"><strong>Overpayment Credit</strong></td>
+                            <td class="text-end">
+                                <span class="text-info"><strong>${{ "{:,.2f}".format(total_paid_month - total_due) }}</strong></span>
+                            </td>
+                        </tr>
+                        {% endif %}
                     </tfoot>
                 </table>
 
