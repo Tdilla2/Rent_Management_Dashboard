@@ -51,7 +51,25 @@
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('petty_cash_list') }}"><i class="bi bi-coin"></i> Petty Cash</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('fee_schedule') }}"><i class="bi bi-currency-dollar"></i> Fees</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('settings_page') }}"><i class="bi bi-gear"></i> Settings</a></li>
+                    {% if g.user and g.user.role == 'admin' %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('users_list') }}"><i class="bi bi-people-fill"></i> Users</a></li>
+                    {% endif %}
                 </ul>
+                {% if g.user %}
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                            <i class="bi bi-person-circle"></i> {{ g.user.display_name }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><span class="dropdown-item-text text-muted small">{{ g.user.role|title }}</span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('change_password') }}"><i class="bi bi-key"></i> Change Password</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+                        </ul>
+                    </li>
+                </ul>
+                {% endif %}
             </div>
         </div>
     </nav>

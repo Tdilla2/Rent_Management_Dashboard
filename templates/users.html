@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}User Management{% endblock %}
+{% block content %}
+<div class="row">
+    <!-- Add User Form -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-person-plus"></i> Add New User</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_user') }}">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Username</label>
+                        <input type="text" name="username" class="form-control" required
+                               pattern="[a-zA-Z0-9_]+" title="Letters, numbers, and underscores only">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Display Name</label>
+                        <input type="text" name="display_name" class="form-control" placeholder="Full name">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Password</label>
+                        <input type="password" name="password" class="form-control" minlength="6" required>
+                        <div class="form-text">Minimum 6 characters</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Role</label>
+                        <select name="role" class="form-select">
+                            <option value="admin">Admin - Full access</option>
+                            <option value="manager" selected>Manager - Can create/edit</option>
+                            <option value="viewer">Viewer - Read only</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-plus-lg"></i> Create User
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users List -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-people-fill"></i> Users ({{ users|length }})</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Username</th>
+                                <th>Display Name</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr class="{{ 'table-secondary' if not user.is_active }}">
+                                <td>
+                                    <i class="bi bi-person-circle"></i>
+                                    <strong>{{ user.username }}</strong>
+                                </td>
+                                <td>{{ user.display_name or '-' }}</td>
+                                <td>
+                                    {% if user.role == 'admin' %}
+                                    <span class="badge bg-danger">Admin</span>
+                                    {% elif user.role == 'manager' %}
+                                    <span class="badge bg-primary">Manager</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Viewer</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if user.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% else %}
+                                    <span class="badge bg-warning text-dark">Inactive</span>
+                                    {% endif %}
+                                </td>
+                                <td class="small text-muted">{{ user.created_at.strftime('%b %d, %Y') if user.created_at else '-' }}</td>
+                                <td class="text-end">
+                                    {% if user.id != g.user.id %}
+                                    <!-- Toggle Active -->
+                                    <form method="POST" action="{{ url_for('toggle_user', user_id=user.id) }}" class="d-inline">
+                                        <button type="submit" class="btn btn-sm {{ 'btn-outline-warning' if user.is_active else 'btn-outline-success' }}"
+                                                title="{{ 'Deactivate' if user.is_active else 'Activate' }}">
+                                            <i class="bi {{ 'bi-pause-circle' if user.is_active else 'bi-play-circle' }}"></i>
+                                        </button>
+                                    </form>
+
+                                    <!-- Reset Password -->
+                                    <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal"
+                                            data-bs-target="#resetModal{{ user.id }}" title="Reset Password">
+                                        <i class="bi bi-key"></i>
+                                    </button>
+
+                                    <!-- Delete -->
+                                    <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}" class="d-inline"
+                                          onsubmit="return confirm('Delete user {{ user.username }}? This cannot be undone.')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+
+                                    <!-- Reset Password Modal -->
+                                    <div class="modal fade" id="resetModal{{ user.id }}" tabindex="-1">
+                                        <div class="modal-dialog modal-sm">
+                                            <div class="modal-content">
+                                                <form method="POST" action="{{ url_for('reset_user_password', user_id=user.id) }}">
+                                                    <div class="modal-header">
+                                                        <h6 class="modal-title">Reset password for {{ user.username }}</h6>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <input type="password" name="new_password" class="form-control"
+                                                               placeholder="New password" minlength="6" required>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="submit" class="btn btn-primary btn-sm">Reset</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">You</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,8 +1,10 @@
 import os
+import functools
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
@@ -150,6 +152,28 @@ def init_db():
         )
     ''')
 
+    # Users table
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT DEFAULT '',
+            role TEXT DEFAULT 'viewer',
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Seed default admin user if no users exist
+    cur.execute("SELECT COUNT(*) as count FROM users")
+    if cur.fetchone()['count'] == 0:
+        admin_hash = generate_password_hash('admin123')
+        cur.execute(
+            "INSERT INTO users (username, password_hash, display_name, role) VALUES (%s, %s, %s, %s)",
+            ('admin', admin_hash, 'Administrator', 'admin')
+        )
+
     # Seed default fee schedule if empty
     cur.execute("SELECT COUNT(*) as count FROM fee_schedule")
     count = cur.fetchone()['count']
@@ -207,9 +231,200 @@ def get_next_invoice_number(cur):
     return num
 
 
+# ── AUTH ──
+
+def login_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @functools.wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        if session.get('user_role') != 'admin':
+            flash('Admin access required.', 'danger')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.before_request
+def load_user():
+    g.user = None
+    if 'user_id' in session:
+        g.user = {
+            'id': session['user_id'],
+            'username': session.get('username'),
+            'display_name': session.get('display_name'),
+            'role': session.get('user_role')
+        }
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip().lower()
+        password = request.form.get('password', '')
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE username=%s AND is_active=TRUE", (username,))
+        user = cur.fetchone()
+        conn.close()
+        if user and check_password_hash(user['password_hash'], password):
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['display_name'] = user['display_name'] or user['username']
+            session['user_role'] = user['role']
+            session.permanent = True
+            flash(f'Welcome, {session["display_name"]}!', 'success')
+            return redirect(url_for('dashboard'))
+        flash('Invalid username or password.', 'danger')
+    conn = get_db()
+    settings = get_settings(conn)
+    conn.close()
+    return render_template('login.html', settings=settings)
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('login'))
+
+
+@app.route('/change-password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    if request.method == 'POST':
+        current = request.form.get('current_password', '')
+        new_pw = request.form.get('new_password', '')
+        confirm = request.form.get('confirm_password', '')
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE id=%s", (session['user_id'],))
+        user = cur.fetchone()
+        if not check_password_hash(user['password_hash'], current):
+            flash('Current password is incorrect.', 'danger')
+        elif len(new_pw) < 6:
+            flash('New password must be at least 6 characters.', 'danger')
+        elif new_pw != confirm:
+            flash('New passwords do not match.', 'danger')
+        else:
+            cur.execute("UPDATE users SET password_hash=%s WHERE id=%s",
+                        (generate_password_hash(new_pw), session['user_id']))
+            conn.commit()
+            flash('Password changed successfully.', 'success')
+        conn.close()
+        return redirect(url_for('change_password'))
+    conn = get_db()
+    settings = get_settings(conn)
+    conn.close()
+    return render_template('change_password.html', settings=settings)
+
+
+# ── USER MANAGEMENT (admin only) ──
+
+@app.route('/users')
+@admin_required
+def users_list():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute("SELECT id, username, display_name, role, is_active, created_at FROM users ORDER BY id")
+    users = cur.fetchall()
+    conn.close()
+    return render_template('users.html', users=users, settings=settings)
+
+
+@app.route('/users/add', methods=['POST'])
+@admin_required
+def add_user():
+    username = request.form.get('username', '').strip().lower()
+    password = request.form.get('password', '')
+    display_name = request.form.get('display_name', '').strip()
+    role = request.form.get('role', 'viewer')
+    if not username or not password:
+        flash('Username and password are required.', 'danger')
+        return redirect(url_for('users_list'))
+    if len(password) < 6:
+        flash('Password must be at least 6 characters.', 'danger')
+        return redirect(url_for('users_list'))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM users WHERE username=%s", (username,))
+    if cur.fetchone():
+        flash('Username already exists.', 'danger')
+        conn.close()
+        return redirect(url_for('users_list'))
+    cur.execute(
+        "INSERT INTO users (username, password_hash, display_name, role) VALUES (%s,%s,%s,%s)",
+        (username, generate_password_hash(password), display_name or username, role)
+    )
+    conn.commit()
+    conn.close()
+    flash(f'User "{username}" created.', 'success')
+    return redirect(url_for('users_list'))
+
+
+@app.route('/users/<int:user_id>/toggle', methods=['POST'])
+@admin_required
+def toggle_user(user_id):
+    if user_id == session['user_id']:
+        flash('You cannot deactivate yourself.', 'danger')
+        return redirect(url_for('users_list'))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET is_active = NOT is_active WHERE id=%s", (user_id,))
+    conn.commit()
+    conn.close()
+    flash('User status updated.', 'success')
+    return redirect(url_for('users_list'))
+
+
+@app.route('/users/<int:user_id>/reset-password', methods=['POST'])
+@admin_required
+def reset_user_password(user_id):
+    new_pw = request.form.get('new_password', '')
+    if len(new_pw) < 6:
+        flash('Password must be at least 6 characters.', 'danger')
+        return redirect(url_for('users_list'))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE users SET password_hash=%s WHERE id=%s",
+                (generate_password_hash(new_pw), user_id))
+    conn.commit()
+    conn.close()
+    flash('Password reset successfully.', 'success')
+    return redirect(url_for('users_list'))
+
+
+@app.route('/users/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def delete_user(user_id):
+    if user_id == session['user_id']:
+        flash('You cannot delete yourself.', 'danger')
+        return redirect(url_for('users_list'))
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM users WHERE id=%s", (user_id,))
+    conn.commit()
+    conn.close()
+    flash('User deleted.', 'success')
+    return redirect(url_for('users_list'))
+
+
 # ── ROUTES ──
 
 @app.route('/')
+@login_required
 def dashboard():
     conn = get_db()
     settings = get_settings(conn)
@@ -272,6 +487,7 @@ def dashboard():
 
 
 @app.route('/renters')
+@login_required
 def renters_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -310,6 +526,7 @@ def renters_list():
 
 
 @app.route('/renters/add', methods=['GET','POST'])
+@login_required
 def add_renter():
     if request.method == 'POST':
         conn = get_db()
@@ -331,6 +548,7 @@ def add_renter():
 
 
 @app.route('/renters/<int:renter_id>/edit', methods=['GET','POST'])
+@login_required
 def edit_renter(renter_id):
     conn = get_db()
     cur = conn.cursor()
@@ -353,6 +571,7 @@ def edit_renter(renter_id):
 
 
 @app.route('/renters/<int:renter_id>/delete', methods=['POST'])
+@login_required
 def delete_renter(renter_id):
     conn = get_db()
     cur = conn.cursor()
@@ -369,6 +588,7 @@ def delete_renter(renter_id):
 
 
 @app.route('/payments/<int:renter_id>', methods=['GET','POST'])
+@login_required
 def manage_payments(renter_id):
     conn = get_db()
     settings = get_settings(conn)
@@ -411,6 +631,7 @@ def manage_payments(renter_id):
 
 
 @app.route('/unpaid')
+@login_required
 def unpaid_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -442,6 +663,7 @@ def unpaid_list():
 # ── INVOICES ──
 
 @app.route('/invoices')
+@login_required
 def invoices_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -464,6 +686,7 @@ def invoices_list():
 
 
 @app.route('/invoices/generate-monthly', methods=['POST'])
+@login_required
 def generate_monthly_invoices():
     conn = get_db()
     settings = get_settings(conn)
@@ -518,6 +741,7 @@ def generate_monthly_invoices():
 
 
 @app.route('/invoices/create', methods=['GET','POST'])
+@login_required
 def create_invoice():
     conn = get_db()
     settings = get_settings(conn)
@@ -567,6 +791,7 @@ def create_invoice():
 
 
 @app.route('/invoices/<int:invoice_id>')
+@login_required
 def view_invoice(invoice_id):
     conn = get_db()
     settings = get_settings(conn)
@@ -600,6 +825,7 @@ def view_invoice(invoice_id):
 
 
 @app.route('/invoices/<int:invoice_id>/apply-late-fees', methods=['POST'])
+@login_required
 def apply_late_fees(invoice_id):
     conn = get_db()
     cur = conn.cursor()
@@ -679,6 +905,7 @@ def apply_late_fees(invoice_id):
 # ── RECEIPTS ──
 
 @app.route('/receipts')
+@login_required
 def receipts_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -698,6 +925,7 @@ def receipts_list():
 
 
 @app.route('/receipts/create', methods=['GET','POST'])
+@login_required
 def create_receipt():
     conn = get_db()
     settings = get_settings(conn)
@@ -838,6 +1066,7 @@ def create_receipt():
 
 
 @app.route('/receipts/<int:receipt_id>')
+@login_required
 def view_receipt(receipt_id):
     conn = get_db()
     settings = get_settings(conn)
@@ -895,6 +1124,7 @@ def view_receipt(receipt_id):
 
 
 @app.route('/receipts/<int:receipt_id>/confirm-deposit', methods=['POST'])
+@login_required
 def confirm_deposit(receipt_id):
     conn = get_db()
     cur = conn.cursor()
@@ -910,6 +1140,7 @@ def confirm_deposit(receipt_id):
 
 
 @app.route('/receipts/<int:receipt_id>/unconfirm-deposit', methods=['POST'])
+@login_required
 def unconfirm_deposit(receipt_id):
     conn = get_db()
     cur = conn.cursor()
@@ -926,6 +1157,7 @@ def unconfirm_deposit(receipt_id):
 # ── DEPOSITS ──
 
 @app.route('/deposits')
+@login_required
 def deposits_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -952,6 +1184,7 @@ def deposits_list():
 # ── CREDITS / REFUNDS ──
 
 @app.route('/credits')
+@login_required
 def credits_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -973,6 +1206,7 @@ def credits_list():
 
 
 @app.route('/credits/add', methods=['POST'])
+@login_required
 def add_credit():
     conn = get_db()
     cur = conn.cursor()
@@ -998,6 +1232,7 @@ def add_credit():
 
 
 @app.route('/credits/<int:credit_id>/delete', methods=['POST'])
+@login_required
 def delete_credit(credit_id):
     conn = get_db()
     cur = conn.cursor()
@@ -1011,6 +1246,7 @@ def delete_credit(credit_id):
 # ── PETTY CASH / COINS ──
 
 @app.route('/petty-cash')
+@login_required
 def petty_cash_list():
     conn = get_db()
     settings = get_settings(conn)
@@ -1027,6 +1263,7 @@ def petty_cash_list():
 
 
 @app.route('/petty-cash/add', methods=['POST'])
+@login_required
 def add_petty_cash():
     conn = get_db()
     cur = conn.cursor()
@@ -1052,6 +1289,7 @@ def add_petty_cash():
 
 
 @app.route('/petty-cash/<int:item_id>/delete', methods=['POST'])
+@login_required
 def delete_petty_cash(item_id):
     conn = get_db()
     cur = conn.cursor()
@@ -1065,6 +1303,7 @@ def delete_petty_cash(item_id):
 # ── STATEMENTS ──
 
 @app.route('/statements')
+@login_required
 def statements_index():
     conn = get_db()
     settings = get_settings(conn)
@@ -1076,6 +1315,7 @@ def statements_index():
 
 
 @app.route('/statements/<int:renter_id>')
+@login_required
 def renter_statement(renter_id):
     conn = get_db()
     settings = get_settings(conn)
@@ -1174,6 +1414,7 @@ def renter_statement(renter_id):
 # ── FEE SCHEDULE ──
 
 @app.route('/fees', methods=['GET','POST'])
+@login_required
 def fee_schedule():
     conn = get_db()
     cur = conn.cursor()
@@ -1203,6 +1444,7 @@ def fee_schedule():
 # ── SETTINGS ──
 
 @app.route('/settings', methods=['GET','POST'])
+@admin_required
 def settings_page():
     conn = get_db()
     cur = conn.cursor()
@@ -1224,6 +1466,7 @@ def settings_page():
 # ── JSON APIs ──
 
 @app.route('/api/invoice-details/<int:invoice_id>')
+@login_required
 def api_invoice_details(invoice_id):
     conn = get_db()
     cur = conn.cursor()
@@ -1268,6 +1511,7 @@ def api_invoice_details(invoice_id):
 
 
 @app.route('/api/remaining-balance')
+@login_required
 def api_remaining_balance():
     renter_id = request.args.get('renter_id', 0, type=int)
     month = request.args.get('month', '')
