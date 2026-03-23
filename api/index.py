@@ -175,6 +175,18 @@ def init_db():
         )
     ''')
 
+    # Invoice documents table
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS invoice_documents (
+            id SERIAL PRIMARY KEY,
+            invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # Petty cash / Coins table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS petty_cash (
@@ -1071,11 +1083,16 @@ def view_invoice(invoice_id):
 
     remaining_on_invoice = max(0, subtotal - amount_paid)
 
+    # Get attached documents
+    cur.execute("SELECT * FROM invoice_documents WHERE invoice_id=%s ORDER BY uploaded_at DESC", (invoice_id,))
+    invoice_docs = cur.fetchall()
+
     conn.close()
     return render_template('invoice_view.html', invoice=invoice, items=items,
                            subtotal=subtotal, settings=settings,
                            days_overdue=days_overdue, today=today,
                            renter_credit_balance=renter_credit_balance,
+                           invoice_docs=invoice_docs,
                            amount_paid=amount_paid,
                            remaining_on_invoice=remaining_on_invoice)
 
@@ -1302,6 +1319,66 @@ def apply_late_fees(invoice_id):
         flash('No new late fees to apply (check that invoice is overdue and fees not already applied).', 'info')
 
     conn.close()
+    return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+
+@app.route('/invoices/<int:invoice_id>/upload-doc', methods=['POST'])
+@login_required
+def upload_invoice_document(invoice_id):
+    if 'document' not in request.files:
+        flash('No file selected.', 'danger')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    file = request.files['document']
+    if file.filename == '':
+        flash('No file selected.', 'danger')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else ''
+    if ext not in ALLOWED_EXTENSIONS:
+        flash(f'File type .{ext} not allowed.', 'danger')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    original_name = secure_filename(file.filename)
+    unique_name = f"invoices/{invoice_id}/{uuid.uuid4().hex}_{original_name}"
+    s3_client.upload_fileobj(file, S3_BUCKET, unique_name)
+
+    description = request.form.get('doc_description', '').strip()
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO invoice_documents (invoice_id, filename, original_name, description) VALUES (%s,%s,%s,%s)",
+        (invoice_id, unique_name, original_name, description)
+    )
+    conn.commit()
+    conn.close()
+    flash(f'Document "{original_name}" attached to invoice.', 'success')
+    return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+
+@app.route('/invoice-documents/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def delete_invoice_document(doc_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM invoice_documents WHERE id=%s", (doc_id,))
+    doc = cur.fetchone()
+    if not doc:
+        conn.close()
+        flash('Document not found.', 'danger')
+        return redirect(url_for('invoices_list'))
+
+    invoice_id = doc['invoice_id']
+    try:
+        s3_client.delete_object(Bucket=S3_BUCKET, Key=doc['filename'])
+    except Exception:
+        pass
+
+    cur.execute("DELETE FROM invoice_documents WHERE id=%s", (doc_id,))
+    conn.commit()
+    conn.close()
+    flash('Document deleted.', 'success')
     return redirect(url_for('view_invoice', invoice_id=invoice_id))
 
 
