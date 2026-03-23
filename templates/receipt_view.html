@@ -57,17 +57,11 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in items %}
-                        <tr class="{{ 'table-info' if item.amount|float < 0 }}">
+                        {% for item in items if item.amount|float > 0 %}
+                        <tr>
                             <td>{{ item.description or '' }}</td>
                             <td>{{ item.period or '' }}</td>
-                            <td class="text-end {{ 'text-info fw-bold' if item.amount|float < 0 }}">
-                                {% if item.amount|float < 0 %}
-                                <i class="bi bi-arrow-return-left"></i> (${{ "{:,.2f}".format(item.amount|float|abs) }})
-                                {% else %}
-                                ${{ "{:,.2f}".format(item.amount|float) }}
-                                {% endif %}
-                            </td>
+                            <td class="text-end">${{ "{:,.2f}".format(item.amount|float) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -80,12 +74,6 @@
                             <td colspan="2" class="text-end"><strong>Amount Paid</strong></td>
                             <td class="text-end"><strong>${{ "{:,.2f}".format(payment_total) }}</strong></td>
                         </tr>
-                        {% if credit_total > 0 %}
-                        <tr class="table-info">
-                            <td colspan="2" class="text-end"><strong>Credit Issued to Renter</strong></td>
-                            <td class="text-end"><span class="text-info fw-bold">${{ "{:,.2f}".format(credit_total) }}</span></td>
-                        </tr>
-                        {% endif %}
                         <tr>
                             <td colspan="3"><hr class="my-1"></td>
                         </tr>
@@ -114,14 +102,34 @@
                                 {% endif %}
                             </td>
                         </tr>
-                        {% if renter_credit_balance > 0 %}
-                        <tr class="table-success">
-                            <td colspan="2" class="text-end"><strong>Remaining Credit Balance</strong></td>
-                            <td class="text-end"><span class="text-success fw-bold fs-5">${{ "{:,.2f}".format(renter_credit_balance) }}</span></td>
-                        </tr>
-                        {% endif %}
                     </tfoot>
                 </table>
+
+                {% if credit_total > 0 %}
+                <div class="card bg-light border-info mb-3">
+                    <div class="card-body py-2 px-3">
+                        <h6 class="text-info mb-2"><i class="bi bi-arrow-return-left"></i> Credits Issued</h6>
+                        <table class="table table-sm mb-0">
+                            {% for item in items if item.amount|float < 0 %}
+                            <tr>
+                                <td>{{ item.description or '' }}</td>
+                                <td>{{ item.period or '' }}</td>
+                                <td class="text-end text-info fw-bold">${{ "{:,.2f}".format(item.amount|float|abs) }}</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="border-top">
+                                <td colspan="2" class="text-end"><strong>Total Credits</strong></td>
+                                <td class="text-end"><strong class="text-info">${{ "{:,.2f}".format(credit_total) }}</strong></td>
+                            </tr>
+                        </table>
+                        {% if renter_credit_balance > 0 %}
+                        <div class="text-end mt-1">
+                            <span class="text-success fw-bold">Renter Credit Balance: ${{ "{:,.2f}".format(renter_credit_balance) }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
 
                 <div class="receipt-sig mt-3">
                     <p>Authorized Signature: ___________________________</p>
