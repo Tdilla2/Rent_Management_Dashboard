@@ -73,17 +73,13 @@
                     </tbody>
                     <tfoot>
                         <tr class="table-success">
-                            <td colspan="2" class="text-end"><strong>Payment Total</strong></td>
+                            <td colspan="2" class="text-end"><strong>Total Received</strong></td>
                             <td class="text-end"><strong>${{ "{:,.2f}".format(payment_total) }}</strong></td>
                         </tr>
                         {% if credit_total > 0 %}
                         <tr class="table-info">
-                            <td colspan="2" class="text-end"><strong>Credits Applied</strong></td>
-                            <td class="text-end text-info"><strong>- ${{ "{:,.2f}".format(credit_total) }}</strong></td>
-                        </tr>
-                        <tr>
-                            <td colspan="2" class="text-end"><strong>Net Total</strong></td>
-                            <td class="text-end"><strong>${{ "{:,.2f}".format(net_total) }}</strong></td>
+                            <td colspan="2" class="text-end"><strong>Credit Issued to Renter</strong></td>
+                            <td class="text-end text-info"><strong>${{ "{:,.2f}".format(credit_total) }}</strong></td>
                         </tr>
                         {% endif %}
                         <tr>
@@ -95,12 +91,22 @@
                             <td class="text-end">
                                 {% set balance = monthly_rent + fees_month - total_paid_month %}
                                 {% if balance > 0 %}
-                                <span class="text-danger"><strong>${{ "{:,.2f}".format(balance) }}</strong></span>
+                                <span class="text-danger"><strong>${{ "{:,.2f}".format(balance) }} due</strong></span>
+                                {% elif balance < 0 %}
+                                <span class="text-success"><strong>${{ "{:,.2f}".format(balance|abs) }} credit</strong></span>
                                 {% else %}
                                 <span class="text-success"><strong>$0.00</strong></span>
                                 {% endif %}
                             </td>
                         </tr>
+                        {% if credit_total > 0 %}
+                        <tr>
+                            <td colspan="2" class="text-end"><strong>Renter Credit Balance</strong></td>
+                            <td class="text-end">
+                                <span class="text-success"><strong>${{ "{:,.2f}".format(credit_total) }} credit</strong></span>
+                            </td>
+                        </tr>
+                        {% endif %}
                         <tr>
                             <td colspan="2" class="text-end"><strong>Payment Status</strong></td>
                             <td class="text-end">
