@@ -957,19 +957,19 @@ def apply_late_fees(invoice_id):
 
     # Day 10 (5+ days past due date = 10th of month)
     if days_overdue >= 5 and not invoice['late_fee_day10_applied']:
-        # Get running total including any day 6 fees just added
+        # Get total EXCLUDING the $75 magistrate fee
         cur.execute(
-            "SELECT COALESCE(SUM(qty * unit_price), 0) as total FROM invoice_items WHERE invoice_id=%s",
+            "SELECT COALESCE(SUM(qty * unit_price), 0) as total FROM invoice_items WHERE invoice_id=%s AND description NOT LIKE '%%Magistrate%%'",
             (invoice_id,)
         )
-        current_total = float(cur.fetchone()['total'])
-        day10_pct = round(current_total * 0.10, 2)
+        total_ex_magistrate = float(cur.fetchone()['total'])
+        day10_pct = round(total_ex_magistrate * 0.10, 2)
         cur.execute(
             "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
             (invoice_id, 'Late Fee – Day 10 (10%)', 1, day10_pct)
         )
         cur.execute("UPDATE invoices SET late_fee_day10_applied=TRUE WHERE id=%s", (invoice_id,))
-        changes.append(f'Day 10: +${day10_pct:.2f} (10% of ${current_total:.2f})')
+        changes.append(f'Day 10: +${day10_pct:.2f} (10% of ${total_ex_magistrate:.2f}, excl. magistrate fee)')
 
     if changes:
         conn.commit()
@@ -1710,7 +1710,7 @@ def cron_generate_invoices():
     invoice_date = f"{year}-{month:02d}-01"
     due_date = f"{year}-{month:02d}-05"
 
-    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY id")
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 AND is_active = TRUE ORDER BY id")
     renters = cur.fetchall()
 
     num = get_next_invoice_number(cur)
@@ -1750,6 +1750,91 @@ def cron_generate_invoices():
     conn.commit()
     conn.close()
     return jsonify({'status': 'ok', 'period': period, 'created': created, 'skipped': skipped})
+
+
+@app.route('/api/cron/apply-late-fees', methods=['GET'])
+def cron_apply_late_fees():
+    secret = os.environ.get('CRON_SECRET', '')
+    auth = request.headers.get('Authorization', '')
+    if secret and auth != f'Bearer {secret}':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    today = date.today()
+    month = today.month
+    year = today.year
+    period = f"{FULL_MONTHS[month-1]} {year}"
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    # Get all auto-generated invoices for current month that still have fees to apply
+    cur.execute('''
+        SELECT invoices.*, renters.monthly_rent
+        FROM invoices JOIN renters ON invoices.renter_id = renters.id
+        WHERE invoices.auto_generated = TRUE
+          AND invoices.period = %s
+          AND (invoices.late_fee_day6_applied = FALSE OR invoices.late_fee_day10_applied = FALSE)
+    ''', (period,))
+    invoices = cur.fetchall()
+
+    applied_day6 = 0
+    applied_day10 = 0
+
+    for invoice in invoices:
+        try:
+            due_date_parsed = datetime.strptime(invoice['due_date'], '%Y-%m-%d').date()
+        except (ValueError, TypeError):
+            continue
+
+        days_overdue = (today - due_date_parsed).days
+        invoice_id = invoice['id']
+
+        # Get base items (excluding late fees and magistrate fees)
+        cur.execute("SELECT * FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+        items = cur.fetchall()
+        late_tags = ['Late Fee', 'Magistrate Fee']
+        base_items = [i for i in items if not any(tag in i['description'] for tag in late_tags)]
+        base_total = sum(float(i['qty']) * float(i['unit_price']) for i in base_items)
+
+        # Day 6: 10% of base rent + $75 magistrate fee
+        if days_overdue >= 1 and not invoice['late_fee_day6_applied']:
+            day6_pct = round(base_total * 0.10, 2)
+            cur.execute(
+                "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+                (invoice_id, 'Late Fee – Day 6 (10%)', 1, day6_pct)
+            )
+            cur.execute(
+                "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+                (invoice_id, 'Magistrate Fee', 1, 75.00)
+            )
+            cur.execute("UPDATE invoices SET late_fee_day6_applied=TRUE WHERE id=%s", (invoice_id,))
+            applied_day6 += 1
+
+        # Day 10: 10% of total EXCLUDING the $75 magistrate fee
+        if days_overdue >= 5 and not invoice['late_fee_day10_applied']:
+            cur.execute(
+                "SELECT COALESCE(SUM(qty * unit_price), 0) as total FROM invoice_items WHERE invoice_id=%s AND description NOT LIKE '%%Magistrate%%'",
+                (invoice_id,)
+            )
+            total_ex_magistrate = float(cur.fetchone()['total'])
+            day10_pct = round(total_ex_magistrate * 0.10, 2)
+            cur.execute(
+                "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+                (invoice_id, 'Late Fee – Day 10 (10%)', 1, day10_pct)
+            )
+            cur.execute("UPDATE invoices SET late_fee_day10_applied=TRUE WHERE id=%s", (invoice_id,))
+            applied_day10 += 1
+
+    conn.commit()
+    conn.close()
+    return jsonify({
+        'status': 'ok',
+        'period': period,
+        'day': today.day,
+        'day6_applied': applied_day6,
+        'day10_applied': applied_day10,
+        'invoices_checked': len(invoices)
+    })
 
 
 # Initialize database tables on first request
