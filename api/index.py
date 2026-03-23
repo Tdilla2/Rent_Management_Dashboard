@@ -1009,6 +1009,14 @@ def create_invoice():
                 "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
                 (invoice_id, fee_desc, 1, extra_fee)
             )
+        charge_descs = request.form.getlist('charge_desc[]')
+        charge_amounts = request.form.getlist('charge_amount[]')
+        for desc, amt in zip(charge_descs, charge_amounts):
+            if desc and amt:
+                cur.execute(
+                    "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+                    (invoice_id, desc.strip(), 1, float(amt))
+                )
         conn.commit()
         conn.close()
         flash('Invoice created.', 'success')
@@ -1380,6 +1388,35 @@ def delete_invoice_document(doc_id):
     conn.close()
     flash('Document deleted.', 'success')
     return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+
+@app.route('/invoices/<int:invoice_id>/delete', methods=['POST'])
+@login_required
+def delete_invoice(invoice_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM invoices WHERE id=%s", (invoice_id,))
+    invoice = cur.fetchone()
+    if not invoice:
+        conn.close()
+        flash('Invoice not found.', 'danger')
+        return redirect(url_for('invoices_list'))
+
+    # Delete related documents from S3
+    cur.execute("SELECT filename FROM invoice_documents WHERE invoice_id=%s", (invoice_id,))
+    for doc in cur.fetchall():
+        try:
+            s3_client.delete_object(Bucket=S3_BUCKET, Key=doc['filename'])
+        except Exception:
+            pass
+
+    cur.execute("DELETE FROM invoice_documents WHERE invoice_id=%s", (invoice_id,))
+    cur.execute("DELETE FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+    cur.execute("DELETE FROM invoices WHERE id=%s", (invoice_id,))
+    conn.commit()
+    conn.close()
+    flash('Invoice deleted.', 'success')
+    return redirect(url_for('invoices_list'))
 
 
 # ── RECEIPTS ──

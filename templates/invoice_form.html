@@ -49,6 +49,24 @@
                             <input type="number" name="extra_fee" id="feeAmount" class="form-control" step="0.01" value="0">
                         </div>
                         <div class="col-12">
+                            <hr class="my-2">
+                            <label class="form-label fw-bold">Additional Charges</label>
+                            <div id="additionalCharges">
+                                <div class="row g-2 mb-2 charge-row">
+                                    <div class="col-md-7">
+                                        <input type="text" name="charge_desc[]" class="form-control" placeholder="Description (e.g. Parking, Utilities)">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="number" name="charge_amount[]" class="form-control" step="0.01" placeholder="Amount ($)">
+                                    </div>
+                                    <div class="col-md-1 d-flex align-items-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCharge(this)" title="Remove">&times;</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addCharge()"><i class="bi bi-plus-circle"></i> Add Charge</button>
+                        </div>
+                        <div class="col-12">
                             <label class="form-label">Notes</label>
                             <textarea name="notes" class="form-control" rows="2">Payment is due by the due date. Late fees may apply for late payments.</textarea>
                         </div>
@@ -69,6 +87,21 @@ function updateFeeAmount() {
     const sel = document.getElementById('feeSelect');
     const amt = sel.options[sel.selectedIndex].getAttribute('data-amount');
     document.getElementById('feeAmount').value = parseFloat(amt) || 0;
+}
+function addCharge() {
+    const container = document.getElementById('additionalCharges');
+    const row = document.createElement('div');
+    row.className = 'row g-2 mb-2 charge-row';
+    row.innerHTML = '<div class="col-md-7"><input type="text" name="charge_desc[]" class="form-control" placeholder="Description (e.g. Parking, Utilities)"></div><div class="col-md-4"><input type="number" name="charge_amount[]" class="form-control" step="0.01" placeholder="Amount ($)"></div><div class="col-md-1 d-flex align-items-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCharge(this)" title="Remove">&times;</button></div>';
+    container.appendChild(row);
+}
+function removeCharge(btn) {
+    const rows = document.querySelectorAll('.charge-row');
+    if (rows.length > 1) {
+        btn.closest('.charge-row').remove();
+    } else {
+        btn.closest('.charge-row').querySelectorAll('input').forEach(i => i.value = '');
+    }
 }
 </script>
 {% endblock %}
