@@ -1166,6 +1166,11 @@ def create_receipt():
                     if inv_total and inv_total['total']:
                         total_due = max(float(inv_total['total']), total_due)
 
+            # Add non-rent charges (keys, deposits, etc.) to total_due
+            non_rent_charges = sum(amt for desc, amt in line_items
+                                   if desc.lower() not in ('rent', 'monthly rent'))
+            total_due += non_rent_charges
+
             remaining = total_due - already_paid
             if total_amount > remaining and remaining >= 0:
                 overpayment = round(total_amount - remaining, 2)
@@ -1313,6 +1318,15 @@ def view_receipt(receipt_id):
             total_paid_month = float(pay['amount_paid'] or 0)
             fees_month = float(pay['fees'] or 0)
 
+        # Sum ALL positive charges from ALL receipts this month (rent + keys + everything)
+        cur.execute('''
+            SELECT COALESCE(SUM(ri.amount), 0) as total
+            FROM receipt_items ri
+            JOIN receipts r ON ri.receipt_id = r.id
+            WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment' AND ri.amount > 0
+        ''', (receipt['renter_id'], month_name))
+        total_charges_month = float(cur.fetchone()['total'])
+
     # Get renter's total credit balance from credits table
     cur.execute(
         "SELECT COALESCE(SUM(amount), 0) as total FROM credits WHERE renter_id=%s",
@@ -1320,10 +1334,14 @@ def view_receipt(receipt_id):
     )
     renter_credit_balance = float(cur.fetchone()['total'])
 
+    total_due = max(monthly_rent + fees_month, total_charges_month)
+
     conn.close()
     return render_template('receipt_view.html', receipt=receipt, items=items,
                            payment_total=payment_total, credit_total=credit_total,
                            total_paid_month=total_paid_month,
+                           total_charges_month=total_charges_month,
+                           total_due=total_due,
                            fees_month=fees_month, monthly_rent=monthly_rent,
                            renter_credit_balance=renter_credit_balance,
                            settings=settings)
@@ -1408,6 +1426,37 @@ def edit_receipt(receipt_id):
         renter_row = cur.fetchone()
         monthly_rent = float(renter_row['monthly_rent']) if renter_row else 0
 
+        # Get fees from payments table
+        m_num_temp = MONTHS.index(new_month) + 1 if new_month in MONTHS else None
+        fees_due = 0.0
+        if m_num_temp:
+            temp_year = settings['current_year']
+            if new_pay_date:
+                try:
+                    temp_year = int(new_pay_date.split('-')[0])
+                except (IndexError, ValueError):
+                    pass
+            cur.execute("SELECT fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s", (renter_id, temp_year, m_num_temp))
+            fees_row = cur.fetchone()
+            if fees_row:
+                fees_due = float(fees_row['fees'] or 0)
+
+        # Total due = monthly rent + fees
+        total_due = monthly_rent + fees_due
+
+        # Sum ALL charges from ALL receipts this month (including this one after edit)
+        # This receipt's new items are already inserted, so total_charges includes them
+        cur.execute('''
+            SELECT COALESCE(SUM(ri.amount), 0) as total
+            FROM receipt_items ri
+            JOIN receipts r ON ri.receipt_id = r.id
+            WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment' AND ri.amount > 0
+        ''', (renter_id, new_month))
+        total_all_charges = float(cur.fetchone()['total'])
+
+        # Total due should cover rent + fees + any extra charges (keys, deposits, etc.)
+        total_due = max(total_due, total_all_charges)
+
         # Check how much was already paid this month by OTHER receipts
         cur.execute('''
             SELECT COALESCE(SUM(ri.amount), 0) as total
@@ -1418,11 +1467,11 @@ def edit_receipt(receipt_id):
         ''', (renter_id, new_month, receipt_id))
         other_paid = float(cur.fetchone()['total'])
 
-        remaining_rent = monthly_rent - other_paid
-        if remaining_rent < 0:
-            remaining_rent = 0
+        remaining_due = total_due - other_paid
+        if remaining_due < 0:
+            remaining_due = 0
 
-        if new_total > remaining_rent and remaining_rent >= 0 and new_type == 'payment' and new_month in MONTHS:
+        if new_total > remaining_due and remaining_due >= 0 and new_type == 'payment' and new_month in MONTHS:
             overpayment = round(new_total - remaining_rent, 2)
             if overpayment > 0:
                 cur.execute(

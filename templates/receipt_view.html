@@ -92,13 +92,17 @@
                             <td class="text-end"><strong>${{ "{:,.2f}".format(total_paid_month) }}</strong></td>
                         </tr>
                         <tr>
-                            <td colspan="2" class="text-end"><strong>Remaining Rent Balance</strong></td>
+                            <td colspan="2" class="text-end"><strong>Total Due (Rent + Charges + Fees)</strong></td>
+                            <td class="text-end"><strong>${{ "{:,.2f}".format(total_due) }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" class="text-end"><strong>Remaining Balance</strong></td>
                             <td class="text-end">
-                                {% set rent_balance = monthly_rent + fees_month - total_paid_month %}
-                                {% if rent_balance > 0 %}
-                                <span class="text-danger"><strong>${{ "{:,.2f}".format(rent_balance) }} due</strong></span>
-                                {% elif rent_balance < 0 %}
-                                <span class="text-success"><strong>${{ "{:,.2f}".format(rent_balance|abs) }} credit</strong></span>
+                                {% set balance = total_due - total_paid_month %}
+                                {% if balance > 0 %}
+                                <span class="text-danger"><strong>${{ "{:,.2f}".format(balance) }} due</strong></span>
+                                {% elif balance < 0 %}
+                                <span class="text-success"><strong>${{ "{:,.2f}".format(balance|abs) }} credit</strong></span>
                                 {% else %}
                                 <span class="text-success"><strong>$0.00 — Paid in Full</strong></span>
                                 {% endif %}
