@@ -1218,12 +1218,19 @@ def view_receipt(receipt_id):
             total_paid_month = float(pay['amount_paid'] or 0)
             fees_month = float(pay['fees'] or 0)
 
+    # Get renter's total credit balance from credits table
+    cur.execute(
+        "SELECT COALESCE(SUM(amount), 0) as total FROM credits WHERE renter_id=%s",
+        (receipt['renter_id'],)
+    )
+    renter_credit_balance = float(cur.fetchone()['total'])
+
     conn.close()
     return render_template('receipt_view.html', receipt=receipt, items=items,
                            payment_total=payment_total, credit_total=credit_total,
-                           net_total=net_total,
                            total_paid_month=total_paid_month,
                            fees_month=fees_month, monthly_rent=monthly_rent,
+                           renter_credit_balance=renter_credit_balance,
                            settings=settings)
 
 
