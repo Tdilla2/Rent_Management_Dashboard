@@ -1392,6 +1392,49 @@ def edit_receipt(receipt_id):
                  f"{credit_desc or 'Credit'} (Receipt #{receipt['receipt_number']})", 'credit')
             )
 
+        # ── Step 3b: Calculate overpayment credit ──
+        # Remove any old overpayment credit items from this receipt
+        cur.execute("DELETE FROM receipt_items WHERE receipt_id=%s AND description LIKE 'Credit (Overpayment)%%'", (receipt_id,))
+        # Remove old overpayment credit entries from credits table for this receipt
+        cur.execute("DELETE FROM credits WHERE renter_id=%s AND description LIKE %s",
+                    (renter_id, f"Overpayment on Receipt #{receipt['receipt_number']}%"))
+
+        # Sum all positive items on this receipt
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total FROM receipt_items WHERE receipt_id=%s AND amount > 0", (receipt_id,))
+        new_total = float(cur.fetchone()['total'])
+
+        # Get the renter's monthly rent
+        cur.execute("SELECT monthly_rent FROM renters WHERE id=%s", (renter_id,))
+        renter_row = cur.fetchone()
+        monthly_rent = float(renter_row['monthly_rent']) if renter_row else 0
+
+        # Check how much was already paid this month by OTHER receipts
+        cur.execute('''
+            SELECT COALESCE(SUM(ri.amount), 0) as total
+            FROM receipt_items ri
+            JOIN receipts r ON ri.receipt_id = r.id
+            WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment'
+              AND ri.amount > 0 AND r.id != %s
+        ''', (renter_id, new_month, receipt_id))
+        other_paid = float(cur.fetchone()['total'])
+
+        remaining_rent = monthly_rent - other_paid
+        if remaining_rent < 0:
+            remaining_rent = 0
+
+        if new_total > remaining_rent and remaining_rent >= 0 and new_type == 'payment' and new_month in MONTHS:
+            overpayment = round(new_total - remaining_rent, 2)
+            if overpayment > 0:
+                cur.execute(
+                    "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
+                    (receipt_id, 'Credit (Overpayment)', new_month, -overpayment)
+                )
+                cur.execute(
+                    "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
+                    (renter_id, new_pay_date or date.today().isoformat(), overpayment,
+                     f"Overpayment on Receipt #{receipt['receipt_number']} ({new_month})", 'credit')
+                )
+
         # ── Step 4: Recalculate payments from ALL receipts for affected months ──
         # Collect all months that need recalculating
         months_to_recalc = set()

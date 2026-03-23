@@ -92,11 +92,13 @@
                             <td class="text-end"><strong>${{ "{:,.2f}".format(total_paid_month) }}</strong></td>
                         </tr>
                         <tr>
-                            <td colspan="2" class="text-end"><strong>Remaining Balance</strong></td>
+                            <td colspan="2" class="text-end"><strong>Remaining Rent Balance</strong></td>
                             <td class="text-end">
                                 {% set rent_balance = monthly_rent + fees_month - total_paid_month %}
                                 {% if rent_balance > 0 %}
                                 <span class="text-danger"><strong>${{ "{:,.2f}".format(rent_balance) }} due</strong></span>
+                                {% elif rent_balance < 0 %}
+                                <span class="text-success"><strong>${{ "{:,.2f}".format(rent_balance|abs) }} credit</strong></span>
                                 {% else %}
                                 <span class="text-success"><strong>$0.00 — Paid in Full</strong></span>
                                 {% endif %}
@@ -108,7 +110,7 @@
                 {% if credit_total > 0 %}
                 <div class="card bg-light border-info mb-3">
                     <div class="card-body py-2 px-3">
-                        <h6 class="text-info mb-2"><i class="bi bi-arrow-return-left"></i> Credits Issued</h6>
+                        <h6 class="text-info mb-2"><i class="bi bi-arrow-return-left"></i> Credits on this Receipt</h6>
                         <table class="table table-sm mb-0">
                             {% for item in items if item.amount|float < 0 %}
                             <tr>
@@ -122,12 +124,13 @@
                                 <td class="text-end"><strong class="text-info">${{ "{:,.2f}".format(credit_total) }}</strong></td>
                             </tr>
                         </table>
-                        {% if renter_credit_balance > 0 %}
-                        <div class="text-end mt-1">
-                            <span class="text-success fw-bold">Renter Credit Balance: ${{ "{:,.2f}".format(renter_credit_balance) }}</span>
-                        </div>
-                        {% endif %}
                     </div>
+                </div>
+                {% endif %}
+
+                {% if renter_credit_balance > 0 %}
+                <div class="alert alert-success py-2 px-3">
+                    <i class="bi bi-wallet2"></i> <strong>Renter Credit Balance: ${{ "{:,.2f}".format(renter_credit_balance) }}</strong>
                 </div>
                 {% endif %}
 
