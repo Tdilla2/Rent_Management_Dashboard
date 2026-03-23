@@ -1087,6 +1087,20 @@ def create_receipt():
                 (receipt_id, desc, month, amt)
             )
 
+        # Manual credit from the credit field
+        manual_credit = float(request.form.get('credit_amount', 0))
+        credit_desc = request.form.get('credit_description', '').strip()
+        if manual_credit > 0:
+            cur.execute(
+                "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
+                (receipt_id, f'Credit: {credit_desc or "Applied Credit"}', month, -manual_credit)
+            )
+            cur.execute(
+                "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
+                (renter_id, pay_date or date.today().isoformat(), manual_credit,
+                 f"{credit_desc or 'Credit'} (Receipt #{rec_num})", 'credit')
+            )
+
         # If overpayment, add a credit line item on the receipt and create credit entry
         if overpayment > 0:
             cur.execute(

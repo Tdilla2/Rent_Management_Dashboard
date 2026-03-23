@@ -100,9 +100,6 @@
 
                     <!-- Line Items -->
                     <h6 class="mt-4 mb-2">Payment Line Items</h6>
-                    <div class="alert alert-info py-2 small mb-2">
-                        <i class="bi bi-info-circle"></i> If the payment exceeds the balance due, the overpayment will automatically be recorded as a <strong>credit</strong> on the receipt and in the Credits tab.
-                    </div>
                     <table class="table table-sm" id="lineItemsTable">
                         <thead>
                             <tr>
@@ -117,7 +114,7 @@
                                     <select name="item_desc_0" class="form-select form-select-sm" onchange="prefillAmount(this, 0)">
                                         <option value="Rent" data-amount="0" selected>Rent</option>
                                         {% for fee in fee_types %}
-                                        <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }}</option>
+                                        <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }} (${{ "{:,.2f}".format(fee.amount) }})</option>
                                         {% endfor %}
                                         <option value="__custom__" data-amount="0">Other (custom)...</option>
                                     </select>
@@ -136,6 +133,28 @@
                         </tfoot>
                     </table>
                     <button type="button" class="btn btn-sm btn-outline-success mb-3" onclick="addLineItem()"><i class="bi bi-plus-lg"></i> Add Line Item</button>
+
+                    <!-- Credit Field -->
+                    <div class="card bg-light mb-3">
+                        <div class="card-body py-2 px-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <label class="form-label mb-0 fw-bold"><i class="bi bi-arrow-return-left text-success"></i> Apply Credit to Renter</label>
+                                    <small class="text-muted d-block">Enter a credit amount to record on this receipt and add to the Credits tab</small>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="number" name="credit_amount" id="creditAmount" class="form-control form-control-sm" step="0.01" min="0" value="0" placeholder="0.00" oninput="updateTotal()">
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" name="credit_description" id="creditDescription" class="form-control form-control-sm" placeholder="Reason (optional)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info py-2 small mb-2">
+                        <i class="bi bi-info-circle"></i> If the payment exceeds the balance due, the overpayment will also automatically be recorded as a credit.
+                    </div>
 
                     <div class="text-danger mb-2" id="totalError" style="display:none; font-weight:600;"></div>
 
@@ -159,7 +178,7 @@ let lineIdx = 1;
 const feeOptions = `
     <option value="Rent" data-amount="0">Rent</option>
     {% for fee in fee_types %}
-    <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }}</option>
+    <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }} (${{ "{:,.2f}".format(fee.amount) }})</option>
     {% endfor %}
     <option value="__custom__" data-amount="0">Other (custom)...</option>
 `;
@@ -318,7 +337,15 @@ function updateTotal() {
     let total = 0;
     amounts.forEach(inp => { total += parseFloat(inp.value) || 0; });
 
-    document.getElementById('totalAmount').textContent = '$' + total.toFixed(2);
+    const creditAmt = parseFloat(document.getElementById('creditAmount').value) || 0;
+    const netTotal = total - creditAmt;
+
+    if (creditAmt > 0) {
+        document.getElementById('totalAmount').innerHTML = '$' + total.toFixed(2) +
+            ' <small class="text-success">- $' + creditAmt.toFixed(2) + ' credit = <strong>$' + netTotal.toFixed(2) + '</strong></small>';
+    } else {
+        document.getElementById('totalAmount').textContent = '$' + total.toFixed(2);
+    }
 
     const err = document.getElementById('totalError');
     const btn = document.getElementById('submitBtn');
