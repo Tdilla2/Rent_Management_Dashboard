@@ -2,11 +2,11 @@
 {% block title %}Payments - {{ renter.name }}{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-8">
+    <div class="col-md-10">
         <div class="card">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="bi bi-cash"></i> Payments - {{ renter.name }} (Unit {{ renter.unit }})</h5>
-                <span class="badge bg-light text-dark">Rent: ${{ "{:,.0f}".format(renter.monthly_rent) }}/mo</span>
+                <span class="badge bg-light text-dark fs-6">Monthly Rent: ${{ "{:,.2f}".format(renter.monthly_rent) }}</span>
             </div>
             <div class="card-body">
                 <div class="mb-3 d-flex gap-2 align-items-center">
@@ -19,8 +19,10 @@
                         <thead>
                             <tr>
                                 <th>Month</th>
+                                <th>Monthly Rent ($)</th>
                                 <th>Amount Paid ($)</th>
                                 <th>Fees ($)</th>
+                                <th>Balance</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
@@ -28,16 +30,40 @@
                             {% for p in payments %}
                             <tr>
                                 <td><strong>{{ p.month }}</strong></td>
-                                <td><input type="number" name="amt_{{ p.month_num }}" class="form-control form-control-sm" step="0.01" value="{{ p.amt }}" style="width:120px"></td>
-                                <td><input type="number" name="fee_{{ p.month_num }}" class="form-control form-control-sm" step="0.01" value="{{ p.fee }}" style="width:120px"></td>
                                 <td>
-                                    <span class="badge {% if p.status == 'Paid' %}bg-success{% elif p.status == 'Unpaid' %}bg-danger{% elif p.status == 'Partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                                        {{ p.status }}
-                                    </span>
+                                    <input type="text" class="form-control form-control-sm bg-light monthly-rent"
+                                           value="{{ "{:,.2f}".format(renter.monthly_rent) }}" disabled style="width:120px"
+                                           data-month="{{ p.month_num }}">
+                                </td>
+                                <td>
+                                    <input type="number" name="amt_{{ p.month_num }}" class="form-control form-control-sm amt-input"
+                                           step="0.01" value="{{ p.amt }}" style="width:120px"
+                                           data-month="{{ p.month_num }}" oninput="calcBalance({{ p.month_num }})">
+                                </td>
+                                <td>
+                                    <input type="number" name="fee_{{ p.month_num }}" class="form-control form-control-sm fee-input"
+                                           step="0.01" value="{{ p.fee }}" style="width:120px"
+                                           data-month="{{ p.month_num }}" oninput="calcBalance({{ p.month_num }})">
+                                </td>
+                                <td>
+                                    <span id="balance_{{ p.month_num }}" class="fw-bold"></span>
+                                </td>
+                                <td>
+                                    <span id="status_{{ p.month_num }}" class="badge"></span>
                                 </td>
                             </tr>
                             {% endfor %}
                         </tbody>
+                        <tfoot>
+                            <tr class="table-primary fw-bold">
+                                <td>TOTALS</td>
+                                <td id="totalRent"></td>
+                                <td id="totalPaid"></td>
+                                <td id="totalFees"></td>
+                                <td id="totalBalance"></td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
                     </table>
                     <div class="d-flex gap-2">
                         <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> Save Payments</button>
@@ -48,4 +74,76 @@
         </div>
     </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+const monthlyRent = {{ renter.monthly_rent | float }};
+
+function calcBalance(m) {
+    const amt = parseFloat(document.querySelector(`.amt-input[data-month="${m}"]`).value) || 0;
+    const fee = parseFloat(document.querySelector(`.fee-input[data-month="${m}"]`).value) || 0;
+    const totalDue = monthlyRent + fee;
+    const balance = totalDue - amt;
+
+    const balEl = document.getElementById('balance_' + m);
+    const statusEl = document.getElementById('status_' + m);
+
+    if (monthlyRent <= 0) {
+        balEl.textContent = '--';
+        balEl.className = 'fw-bold text-muted';
+        statusEl.textContent = '--';
+        statusEl.className = 'badge bg-secondary';
+    } else if (balance <= 0) {
+        balEl.textContent = '$0.00';
+        balEl.className = 'fw-bold text-success';
+        statusEl.textContent = 'Paid';
+        statusEl.className = 'badge bg-success';
+    } else if (amt > 0) {
+        balEl.textContent = '$' + balance.toFixed(2) + ' due';
+        balEl.className = 'fw-bold text-warning';
+        statusEl.textContent = 'Partial';
+        statusEl.className = 'badge bg-warning text-dark';
+    } else {
+        balEl.textContent = '$' + balance.toFixed(2) + ' due';
+        balEl.className = 'fw-bold text-danger';
+        statusEl.textContent = 'Unpaid';
+        statusEl.className = 'badge bg-danger';
+    }
+
+    calcTotals();
+}
+
+function calcTotals() {
+    let totalRent = 0, totalPaid = 0, totalFees = 0;
+    document.querySelectorAll('.amt-input').forEach(inp => {
+        totalPaid += parseFloat(inp.value) || 0;
+    });
+    document.querySelectorAll('.fee-input').forEach(inp => {
+        totalFees += parseFloat(inp.value) || 0;
+    });
+    totalRent = monthlyRent * 12;
+    const totalBalance = (totalRent + totalFees) - totalPaid;
+
+    document.getElementById('totalRent').textContent = '$' + totalRent.toFixed(2);
+    document.getElementById('totalPaid').textContent = '$' + totalPaid.toFixed(2);
+    document.getElementById('totalFees').textContent = '$' + totalFees.toFixed(2);
+
+    const balEl = document.getElementById('totalBalance');
+    if (totalBalance > 0) {
+        balEl.textContent = '$' + totalBalance.toFixed(2) + ' due';
+        balEl.className = 'text-danger';
+    } else if (totalBalance < 0) {
+        balEl.textContent = '$' + Math.abs(totalBalance).toFixed(2) + ' credit';
+        balEl.className = 'text-success';
+    } else {
+        balEl.textContent = '$0.00';
+        balEl.className = 'text-success';
+    }
+}
+
+// Calculate all on page load
+for (let m = 1; m <= 12; m++) {
+    calcBalance(m);
+}
+</script>
 {% endblock %}
