@@ -73,8 +73,46 @@
                             <td colspan="3" class="text-end"><strong>TOTAL DUE</strong></td>
                             <td class="text-end"><strong>${{ "{:,.2f}".format(subtotal) }}</strong></td>
                         </tr>
+                        {% if amount_paid > 0 %}
+                        <tr class="table-success">
+                            <td colspan="3" class="text-end"><strong>Amount Paid</strong></td>
+                            <td class="text-end"><strong class="text-success">${{ "{:,.2f}".format(amount_paid) }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td colspan="3" class="text-end"><strong>Remaining</strong></td>
+                            <td class="text-end">
+                                {% if remaining_on_invoice > 0 %}
+                                <strong class="text-danger">${{ "{:,.2f}".format(remaining_on_invoice) }}</strong>
+                                {% else %}
+                                <strong class="text-success">$0.00 — Paid in Full</strong>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endif %}
                     </tfoot>
                 </table>
+
+                <!-- Credit Balance & Apply Credit -->
+                {% if renter_credit_balance > 0 and remaining_on_invoice > 0 %}
+                <div class="alert alert-success no-print">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-wallet2"></i>
+                            <strong>{{ invoice.name }}</strong> has a credit balance of
+                            <strong>${{ "{:,.2f}".format(renter_credit_balance) }}</strong>
+                        </div>
+                        <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#applyCreditModal">
+                            <i class="bi bi-arrow-down-circle"></i> Apply Credit
+                        </button>
+                    </div>
+                </div>
+                {% elif renter_credit_balance > 0 %}
+                <div class="alert alert-info no-print">
+                    <i class="bi bi-wallet2"></i>
+                    <strong>{{ invoice.name }}</strong> has a credit balance of
+                    <strong>${{ "{:,.2f}".format(renter_credit_balance) }}</strong>
+                </div>
+                {% endif %}
 
                 {% if invoice.notes %}
                 <div class="mt-4">
@@ -112,6 +150,47 @@
                 <i class="bi bi-receipt"></i> Record Payment
             </a>
         </div>
+
+        <!-- Apply Credit Modal -->
+        {% if renter_credit_balance > 0 and remaining_on_invoice > 0 %}
+        <div class="modal fade" id="applyCreditModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header bg-success text-white">
+                        <h5 class="modal-title"><i class="bi bi-arrow-down-circle"></i> Apply Credit to Invoice</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <form method="post" action="{{ url_for('apply_credit_to_invoice', invoice_id=invoice.id) }}">
+                        <div class="modal-body">
+                            <p>Apply credit from <strong>{{ invoice.name }}</strong>'s balance toward this invoice.</p>
+                            <div class="row g-3">
+                                <div class="col-6">
+                                    <label class="form-label">Available Credit</label>
+                                    <input type="text" class="form-control" value="${{ '{:,.2f}'.format(renter_credit_balance) }}" disabled>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label">Invoice Remaining</label>
+                                    <input type="text" class="form-control" value="${{ '{:,.2f}'.format(remaining_on_invoice) }}" disabled>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Amount to Apply ($)</label>
+                                    {% set max_apply = [renter_credit_balance, remaining_on_invoice]|min %}
+                                    <input type="number" name="credit_amount" class="form-control" step="0.01"
+                                           min="0.01" max="{{ '{:.2f}'.format(max_apply) }}"
+                                           value="{{ '{:.2f}'.format(max_apply) }}" required>
+                                    <div class="form-text">Max: ${{ '{:,.2f}'.format(max_apply) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Apply Credit</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

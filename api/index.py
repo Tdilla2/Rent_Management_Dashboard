@@ -944,10 +944,45 @@ def view_invoice(invoice_id):
             days_overdue = (today - due).days
         except (ValueError, TypeError):
             pass
+
+    # Get renter's credit balance
+    cur.execute(
+        "SELECT COALESCE(SUM(amount), 0) as total FROM credits WHERE renter_id=%s",
+        (invoice['renter_id'],)
+    )
+    renter_credit_balance = float(cur.fetchone()['total'])
+
+    # Get amount already paid toward this invoice's month
+    month_name = ''
+    period = (invoice['period'] or '').strip().lower()
+    for m in MONTHS:
+        if m.lower() in period:
+            month_name = m
+            break
+    amount_paid = 0.0
+    if month_name:
+        month_num = MONTHS.index(month_name) + 1
+        pay_year = settings['current_year']
+        if invoice['invoice_date']:
+            try:
+                pay_year = int(invoice['invoice_date'].split('-')[0])
+            except (IndexError, ValueError):
+                pass
+        cur.execute("SELECT amount_paid FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+                    (invoice['renter_id'], pay_year, month_num))
+        pay = cur.fetchone()
+        if pay:
+            amount_paid = float(pay['amount_paid'] or 0)
+
+    remaining_on_invoice = max(0, subtotal - amount_paid)
+
     conn.close()
     return render_template('invoice_view.html', invoice=invoice, items=items,
                            subtotal=subtotal, settings=settings,
-                           days_overdue=days_overdue, today=today)
+                           days_overdue=days_overdue, today=today,
+                           renter_credit_balance=renter_credit_balance,
+                           amount_paid=amount_paid,
+                           remaining_on_invoice=remaining_on_invoice)
 
 
 @app.route('/invoices/<int:invoice_id>/edit', methods=['GET', 'POST'])
@@ -996,6 +1031,105 @@ def edit_invoice(invoice_id):
     items = cur.fetchall()
     conn.close()
     return render_template('invoice_edit.html', invoice=invoice, items=items, settings=settings)
+
+
+@app.route('/invoices/<int:invoice_id>/apply-credit', methods=['POST'])
+@login_required
+def apply_credit_to_invoice(invoice_id):
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT invoices.*, renters.monthly_rent
+        FROM invoices JOIN renters ON invoices.renter_id = renters.id
+        WHERE invoices.id=%s
+    ''', (invoice_id,))
+    invoice = cur.fetchone()
+    if not invoice:
+        conn.close()
+        flash('Invoice not found.', 'danger')
+        return redirect(url_for('invoices_list'))
+
+    renter_id = invoice['renter_id']
+    apply_amount = float(request.form.get('credit_amount', 0))
+
+    if apply_amount <= 0:
+        conn.close()
+        flash('Amount must be greater than zero.', 'danger')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    # Check renter's available credit balance
+    cur.execute("SELECT COALESCE(SUM(amount), 0) as total FROM credits WHERE renter_id=%s", (renter_id,))
+    available_credit = float(cur.fetchone()['total'])
+
+    if apply_amount > available_credit:
+        conn.close()
+        flash(f'Insufficient credit. Available: ${available_credit:,.2f}', 'danger')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    # Get invoice total and amount paid
+    cur.execute("SELECT COALESCE(SUM(qty * unit_price), 0) as total FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+    invoice_total = float(cur.fetchone()['total'])
+
+    # Determine month/year for payment
+    period = (invoice['period'] or '').strip().lower()
+    month_name = ''
+    for m in MONTHS:
+        if m.lower() in period:
+            month_name = m
+            break
+
+    month_num = MONTHS.index(month_name) + 1 if month_name in MONTHS else None
+    pay_year = settings['current_year']
+    if invoice['invoice_date']:
+        try:
+            pay_year = int(invoice['invoice_date'].split('-')[0])
+        except (IndexError, ValueError):
+            pass
+
+    # Get current amount paid
+    amount_paid = 0.0
+    if month_num:
+        cur.execute("SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+                    (renter_id, pay_year, month_num))
+        pay = cur.fetchone()
+        if pay:
+            amount_paid = float(pay['amount_paid'] or 0)
+
+    remaining = invoice_total - amount_paid
+    if apply_amount > remaining:
+        apply_amount = round(remaining, 2)
+
+    if apply_amount <= 0:
+        conn.close()
+        flash('Invoice is already paid in full.', 'info')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    # Deduct from credits (insert a negative credit entry)
+    cur.execute(
+        "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
+        (renter_id, date.today().isoformat(), -apply_amount,
+         f"Applied to Invoice {invoice['invoice_number']}", 'credit')
+    )
+
+    # Add to payments
+    if month_num:
+        cur.execute("SELECT id FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+                    (renter_id, pay_year, month_num))
+        existing = cur.fetchone()
+        new_paid = amount_paid + apply_amount
+        if existing:
+            cur.execute("UPDATE payments SET amount_paid=%s WHERE renter_id=%s AND year=%s AND month=%s",
+                        (new_paid, renter_id, pay_year, month_num))
+        else:
+            cur.execute("INSERT INTO payments (renter_id, year, month, amount_paid, fees) VALUES (%s,%s,%s,%s,%s)",
+                        (renter_id, pay_year, month_num, apply_amount, 0))
+
+    conn.commit()
+    conn.close()
+    flash(f'${apply_amount:,.2f} credit applied to {invoice["invoice_number"]}. Remaining credit: ${available_credit - apply_amount:,.2f}', 'success')
+    return redirect(url_for('view_invoice', invoice_id=invoice_id))
 
 
 @app.route('/invoices/<int:invoice_id>/apply-late-fees', methods=['POST'])
