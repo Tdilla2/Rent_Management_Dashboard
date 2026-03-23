@@ -1246,40 +1246,12 @@ def edit_receipt(receipt_id):
         return redirect(url_for('receipts_list'))
 
     if request.method == 'POST':
-        # ── Step 1: Calculate OLD total and capture old month/type ──
+        renter_id = receipt['renter_id']
+
+        # Capture old month so we can recalculate it too
         old_month_name = receipt['month'] or ''
-        old_month_num = MONTHS.index(old_month_name) + 1 if old_month_name in MONTHS else None
-        old_type = receipt['receipt_type'] or 'payment'
-        old_pay_date = receipt['payment_date'] or ''
 
-        cur.execute(
-            "SELECT COALESCE(SUM(amount), 0) as total FROM receipt_items WHERE receipt_id=%s AND amount > 0",
-            (receipt_id,)
-        )
-        old_total = float(cur.fetchone()['total'])
-
-        old_pay_year = settings['current_year']
-        if old_pay_date:
-            try:
-                old_pay_year = int(old_pay_date.split('-')[0])
-            except (IndexError, ValueError):
-                pass
-
-        # Remove old payment from payments table
-        if old_month_num and old_type == 'payment' and old_total > 0:
-            cur.execute(
-                "SELECT amount_paid FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
-                (receipt['renter_id'], old_pay_year, old_month_num)
-            )
-            old_pay = cur.fetchone()
-            if old_pay:
-                new_amt = max(float(old_pay['amount_paid']) - old_total, 0)
-                cur.execute(
-                    "UPDATE payments SET amount_paid=%s WHERE renter_id=%s AND year=%s AND month=%s",
-                    (new_amt, receipt['renter_id'], old_pay_year, old_month_num)
-                )
-
-        # ── Step 2: Update receipt header ──
+        # ── Step 1: Update receipt header ──
         new_pay_date = request.form.get('payment_date', '')
         new_month = request.form.get('month', '')
         new_type = request.form.get('receipt_type', 'payment')
@@ -1290,9 +1262,8 @@ def edit_receipt(receipt_id):
              new_month, request.form.get('invoice_ref', ''), new_type, receipt_id)
         )
 
-        # ── Step 3: Delete existing items and re-insert ──
+        # ── Step 2: Delete existing items and re-insert ──
         cur.execute("DELETE FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
-        new_line_total = 0
         i = 0
         while f'item_desc_{i}' in request.form:
             desc = request.form.get(f'item_desc_{i}', '').strip()
@@ -1303,11 +1274,9 @@ def edit_receipt(receipt_id):
                     "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
                     (receipt_id, desc, period, amt)
                 )
-                if amt > 0:
-                    new_line_total += amt
             i += 1
 
-        # ── Step 4: Handle credit from the credit field ──
+        # ── Step 3: Handle credit from the credit field ──
         credit_amt = float(request.form.get('credit_amount', 0))
         credit_desc = request.form.get('credit_description', '').strip()
         if credit_amt > 0:
@@ -1317,40 +1286,67 @@ def edit_receipt(receipt_id):
             )
             cur.execute(
                 "INSERT INTO credits (renter_id, credit_date, amount, description, credit_type) VALUES (%s,%s,%s,%s,%s)",
-                (receipt['renter_id'], new_pay_date or date.today().isoformat(), credit_amt,
+                (renter_id, new_pay_date or date.today().isoformat(), credit_amt,
                  f"{credit_desc or 'Credit'} (Receipt #{receipt['receipt_number']})", 'credit')
             )
 
-        # ── Step 5: Add new total to payments table ──
-        new_month_num = MONTHS.index(new_month) + 1 if new_month in MONTHS else None
-        new_pay_year = settings['current_year']
-        if new_pay_date:
-            try:
-                new_pay_year = int(new_pay_date.split('-')[0])
-            except (IndexError, ValueError):
-                pass
+        # ── Step 4: Recalculate payments from ALL receipts for affected months ──
+        # Collect all months that need recalculating
+        months_to_recalc = set()
+        if old_month_name in MONTHS:
+            months_to_recalc.add(old_month_name)
+        if new_month in MONTHS:
+            months_to_recalc.add(new_month)
 
-        if new_month_num and new_type == 'payment' and new_line_total > 0:
+        for m_name in months_to_recalc:
+            m_num = MONTHS.index(m_name) + 1
+            # Sum ALL positive receipt_items for this renter/month across ALL payment receipts
+            cur.execute('''
+                SELECT COALESCE(SUM(ri.amount), 0) as total
+                FROM receipt_items ri
+                JOIN receipts r ON ri.receipt_id = r.id
+                WHERE r.renter_id = %s
+                  AND r.month = %s
+                  AND r.receipt_type = 'payment'
+                  AND ri.amount > 0
+            ''', (renter_id, m_name))
+            recalc_total = float(cur.fetchone()['total'])
+
+            # Determine year from receipts for this month
+            cur.execute('''
+                SELECT payment_date FROM receipts
+                WHERE renter_id = %s AND month = %s AND receipt_type = 'payment'
+                  AND payment_date IS NOT NULL AND payment_date != ''
+                ORDER BY id DESC LIMIT 1
+            ''', (renter_id, m_name))
+            date_row = cur.fetchone()
+            pay_year = settings['current_year']
+            if date_row and date_row['payment_date']:
+                try:
+                    pay_year = int(date_row['payment_date'].split('-')[0])
+                except (IndexError, ValueError):
+                    pass
+
+            # Upsert the payments table with the recalculated total
             cur.execute(
-                "SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
-                (receipt['renter_id'], new_pay_year, new_month_num)
+                "SELECT id, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+                (renter_id, pay_year, m_num)
             )
             existing = cur.fetchone()
             if existing:
-                updated_amt = float(existing['amount_paid']) + new_line_total
                 cur.execute(
                     "UPDATE payments SET amount_paid=%s WHERE renter_id=%s AND year=%s AND month=%s",
-                    (updated_amt, receipt['renter_id'], new_pay_year, new_month_num)
+                    (recalc_total, renter_id, pay_year, m_num)
                 )
             else:
                 cur.execute(
                     "INSERT INTO payments (renter_id, year, month, amount_paid, fees) VALUES (%s,%s,%s,%s,%s)",
-                    (receipt['renter_id'], new_pay_year, new_month_num, new_line_total, 0)
+                    (renter_id, pay_year, m_num, recalc_total, 0)
                 )
 
         conn.commit()
         conn.close()
-        flash('Receipt updated. Payments synced.', 'success')
+        flash('Receipt updated. All balances recalculated.', 'success')
         return redirect(url_for('view_receipt', receipt_id=receipt_id))
 
     cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s ORDER BY id", (receipt_id,))
