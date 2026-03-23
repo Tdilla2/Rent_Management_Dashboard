@@ -180,6 +180,9 @@ def init_db():
         )
     ''')
 
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS security_question TEXT DEFAULT ''")
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS security_answer_hash TEXT DEFAULT ''")
+
     # Seed default admin user if no users exist
     cur.execute("SELECT COUNT(*) as count FROM users")
     if cur.fetchone()['count'] == 0:
@@ -306,6 +309,98 @@ def login():
     settings = get_settings(conn)
     conn.close()
     return render_template('login.html', settings=settings)
+
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        step = request.form.get('step', 'lookup')
+        conn = get_db()
+        cur = conn.cursor()
+
+        if step == 'lookup':
+            username = request.form.get('username', '').strip().lower()
+            cur.execute("SELECT id, username, security_question, security_answer_hash FROM users WHERE username=%s AND is_active=TRUE", (username,))
+            user = cur.fetchone()
+            conn.close()
+            if not user:
+                flash('Username not found.', 'danger')
+                return redirect(url_for('forgot_password'))
+            if not user['security_question'] or not user['security_answer_hash']:
+                flash('No security question set for this account. Please contact an administrator to reset your password.', 'warning')
+                return redirect(url_for('forgot_password'))
+            settings = get_settings(get_db())
+            return render_template('forgot_password.html', settings=settings,
+                                   step='answer', username=user['username'],
+                                   security_question=user['security_question'])
+
+        elif step == 'answer':
+            username = request.form.get('username', '').strip().lower()
+            answer = request.form.get('security_answer', '').strip().lower()
+            cur.execute("SELECT id, security_answer_hash FROM users WHERE username=%s AND is_active=TRUE", (username,))
+            user = cur.fetchone()
+            conn.close()
+            if not user or not check_password_hash(user['security_answer_hash'], answer):
+                flash('Incorrect answer. Please try again or contact an administrator.', 'danger')
+                return redirect(url_for('forgot_password'))
+            settings = get_settings(get_db())
+            return render_template('forgot_password.html', settings=settings,
+                                   step='reset', username=username)
+
+        elif step == 'reset':
+            username = request.form.get('username', '').strip().lower()
+            new_pw = request.form.get('new_password', '')
+            confirm = request.form.get('confirm_password', '')
+            if len(new_pw) < 6:
+                flash('Password must be at least 6 characters.', 'danger')
+                settings = get_settings(conn)
+                conn.close()
+                return render_template('forgot_password.html', settings=settings,
+                                       step='reset', username=username)
+            if new_pw != confirm:
+                flash('Passwords do not match.', 'danger')
+                settings = get_settings(conn)
+                conn.close()
+                return render_template('forgot_password.html', settings=settings,
+                                       step='reset', username=username)
+            cur.execute("UPDATE users SET password_hash=%s WHERE username=%s",
+                        (generate_password_hash(new_pw), username))
+            conn.commit()
+            conn.close()
+            flash('Password has been reset. You can now sign in.', 'success')
+            return redirect(url_for('login'))
+
+    conn = get_db()
+    settings = get_settings(conn)
+    conn.close()
+    return render_template('forgot_password.html', settings=settings, step='lookup')
+
+
+@app.route('/setup-security-question', methods=['GET', 'POST'])
+@login_required
+def setup_security_question():
+    if request.method == 'POST':
+        question = request.form.get('security_question', '').strip()
+        answer = request.form.get('security_answer', '').strip().lower()
+        if not question or not answer:
+            flash('Both question and answer are required.', 'danger')
+            return redirect(url_for('setup_security_question'))
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET security_question=%s, security_answer_hash=%s WHERE id=%s",
+                    (question, generate_password_hash(answer), session['user_id']))
+        conn.commit()
+        conn.close()
+        flash('Security question saved.', 'success')
+        return redirect(url_for('setup_security_question'))
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    cur.execute("SELECT security_question FROM users WHERE id=%s", (session['user_id'],))
+    user = cur.fetchone()
+    conn.close()
+    return render_template('security_question.html', settings=settings,
+                           current_question=user['security_question'] if user else '')
 
 
 @app.route('/logout')

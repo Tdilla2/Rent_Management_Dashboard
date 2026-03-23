@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Security Question{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-shield-lock"></i> Security Question</h5>
+            </div>
+            <div class="card-body">
+                {% if current_question %}
+                <div class="alert alert-success py-2">
+                    <strong>Current question:</strong> {{ current_question }}
+                </div>
+                {% else %}
+                <div class="alert alert-warning py-2">
+                    No security question set. Set one below to enable password recovery.
+                </div>
+                {% endif %}
+
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Security Question</label>
+                        <select name="security_question" class="form-select" id="questionSelect" onchange="toggleCustom()">
+                            <option value="">-- Select a question --</option>
+                            <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                            <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                            <option value="What city were you born in?">What city were you born in?</option>
+                            <option value="What is your favorite color?">What is your favorite color?</option>
+                            <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                            <option value="What street did you grow up on?">What street did you grow up on?</option>
+                            <option value="__custom__">Write your own question...</option>
+                        </select>
+                        <input type="text" id="customQuestion" class="form-control mt-2" style="display:none" placeholder="Enter your custom question">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Answer</label>
+                        <input type="text" name="security_answer" class="form-control" placeholder="Enter your answer" required>
+                        <div class="form-text">Answer is case-insensitive</div>
+                    </div>
+                    <button type="submit" class="btn btn-warning w-100">
+                        <i class="bi bi-save"></i> Save Security Question
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleCustom() {
+    const sel = document.getElementById('questionSelect');
+    const custom = document.getElementById('customQuestion');
+    if (sel.value === '__custom__') {
+        custom.style.display = 'block';
+        custom.required = true;
+        custom.oninput = function() { sel.name = ''; this.name = 'security_question'; };
+        sel.removeAttribute('name');
+        custom.name = 'security_question';
+    } else {
+        custom.style.display = 'none';
+        custom.required = false;
+        custom.removeAttribute('name');
+        sel.name = 'security_question';
+    }
+}
+</script>
+{% endblock %}
