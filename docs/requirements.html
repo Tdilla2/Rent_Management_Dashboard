@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Rent Management Dashboard - Requirements Document</title>
+    <style>
+        body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; padding: 0; color: #333; }
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 30px 40px; }
+        .header h1 { margin: 0; font-size: 22px; letter-spacing: 1px; }
+        .header .subtitle { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+        .header .logo-text { font-size: 28px; font-weight: 800; letter-spacing: 2px; margin-bottom: 5px; }
+        .content { padding: 30px 40px; }
+        h2 { color: #1a1a2e; border-bottom: 2px solid #4f46e5; padding-bottom: 5px; font-size: 16px; margin-top: 25px; }
+        h3 { color: #4f46e5; font-size: 14px; margin-top: 18px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0 20px 0; }
+        th { background: #f0f0f0; text-align: left; padding: 8px 10px; border: 1px solid #ddd; font-size: 12px; }
+        td { padding: 8px 10px; border: 1px solid #ddd; vertical-align: top; }
+        .req-id { font-weight: bold; color: #4f46e5; white-space: nowrap; width: 80px; }
+        .priority-high { color: #dc3545; font-weight: bold; }
+        .priority-med { color: #fd7e14; font-weight: bold; }
+        .priority-low { color: #198754; }
+        .status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+        .status-done { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        ul { margin: 5px 0; padding-left: 20px; }
+        li { margin-bottom: 4px; }
+        .meta { color: #666; font-size: 11px; margin-top: 5px; }
+        .section-note { background: #f8f9fa; border-left: 3px solid #4f46e5; padding: 10px 15px; margin: 10px 0; font-size: 12px; }
+        .footer { text-align: center; padding: 20px 40px; border-top: 2px solid #1a1a2e; margin-top: 30px; font-size: 11px; color: #999; }
+        .editable { border: 1px dashed #ccc; padding: 5px; min-height: 20px; }
+        @media print {
+            .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .status-done, .status-pending { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { font-size: 11px; }
+        }
+        .btn-bar { text-align: center; margin: 15px 0; }
+        .btn-bar button { padding: 8px 20px; margin: 0 5px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .btn-print { background: #4f46e5; color: white; border-color: #4f46e5; }
+        @media print { .btn-bar { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-text">GDI DIGITAL SOLUTIONS</div>
+        <h1>Rent Management Dashboard — Requirements Document</h1>
+        <div class="subtitle">Project Requirements & Feature Specifications</div>
+    </div>
+
+    <div class="content">
+        <div class="btn-bar">
+            <button class="btn-print" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+
+        <p><strong>Client:</strong> <span class="editable" contenteditable="true">___________________________</span></p>
+        <p><strong>Date:</strong> <span class="editable" contenteditable="true">___________________________</span></p>
+        <p><strong>Version:</strong> 1.0</p>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>1. Renter Management</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">RM-001</td>
+                    <td>
+                        <strong>Primary Leaseholder</strong><br>
+                        Capture renter's full name, unit/lot number, monthly rent amount, phone number, and email address.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RM-002</td>
+                    <td>
+                        <strong>Co-Leaseholder</strong><br>
+                        Allow a co-leaser to be added for each renter with name, email, and phone number fields.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RM-003</td>
+                    <td>
+                        <strong>Active/Inactive Status</strong><br>
+                        Ability to mark renters as inactive (e.g., moved out, evicted) without deleting their records. Inactive renters should not appear in active lists or generate invoices.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RM-004</td>
+                    <td>
+                        <strong>Document Attachments — Lease</strong><br>
+                        Attach external documents (PDF, DOC, images) to each renter's profile. Primary use case: uploading the signed lease agreement for each unit. Files stored in AWS S3 (max 5 MB).
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>2. Invoices</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">INV-001</td>
+                    <td>
+                        <strong>Auto-Generate Invoices</strong><br>
+                        Automatically create invoices for all active renters on the 1st of each month. Invoices include monthly rent as the primary line item. Duplicate invoices for the same period should not be created.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">INV-002</td>
+                    <td>
+                        <strong>Editable Invoices</strong><br>
+                        Allow editing of invoice details including date, due date, period, notes, and individual line items (description, quantity, unit price). Line items can be added or removed.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">INV-003</td>
+                    <td>
+                        <strong>Late Fee — Day 6 (10% + $75 Magistrate)</strong><br>
+                        On the 6th of each month (1 day past the 5th due date), automatically apply:
+                        <ul>
+                            <li>10% late fee calculated on the <strong>base rent amount</strong></li>
+                            <li>$75.00 Magistrate/Court fee</li>
+                        </ul>
+                        Auto-applied via AWS EventBridge + Lambda on the 6th of each month.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">INV-004</td>
+                    <td>
+                        <strong>Late Fee — Day 10 (Additional 10%)</strong><br>
+                        On the 10th of each month (5 days past due), automatically apply an additional 10% fee calculated on the <strong>total of rent + Day 6 late fee</strong> (excluding the $75 Magistrate fee). Auto-applied via AWS EventBridge + Lambda on the 10th of each month.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">INV-005</td>
+                    <td>
+                        <strong>Document Attachments — Court Docs</strong><br>
+                        Attach external documents (PDF, DOC, images) to individual invoices. Primary use case: attaching court documents, legal notices, or correspondence related to a specific invoice. Files stored in AWS S3 (max 5 MB).
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>3. Credits & Overpayments</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">CR-001</td>
+                    <td>
+                        <strong>Overpayment Detection</strong><br>
+                        If a renter pays more than the total due (monthly rent + fees + additional charges), the overpayment amount is automatically recorded as a credit in the renter's credit balance.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">CR-002</td>
+                    <td>
+                        <strong>Apply Credits to Future Invoices</strong><br>
+                        Allow applying a renter's credit balance toward any unpaid invoice. The invoice view shows the available credit with an "Apply Credit" button. Credits are deducted from the balance and applied as payment.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">CR-003</td>
+                    <td>
+                        <strong>Credits & Refunds Management</strong><br>
+                        Dedicated page to view, filter, and manage all credits and refunds by renter, type (credit/refund/adjustment), and date range. Manual credit entries supported.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>4. Receipts</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">RC-001</td>
+                    <td>
+                        <strong>Editable Receipts</strong><br>
+                        Create and edit receipts with multiple line items. Changes to receipts automatically recalculate the renter's payment balance for the affected month. Credits are kept separate from charge items when editing.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RC-002</td>
+                    <td>
+                        <strong>Receipt Balance Tracking</strong><br>
+                        Receipts list shows total charges, total credits, and balance (remaining due or overpayment credit) per receipt. Renter's overall credit balance is displayed.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RC-003</td>
+                    <td>
+                        <strong>Credit Recording on Receipts</strong><br>
+                        When creating or editing a receipt, allow credits to be recorded (e.g., overpayment, returned items). Credits are stored in the credits table and displayed separately on the receipt.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>5. Reports</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">RPT-001</td>
+                    <td>
+                        <strong>Account Statements</strong><br>
+                        Generate account statements per renter showing invoices, receipts, credits, total charges, total payments, and balance. Filterable by month and year. Printable format.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RPT-002</td>
+                    <td>
+                        <strong>Monthly Closing Statement</strong><br>
+                        Generate end-of-month closing statements showing total expected rent, collected amounts, outstanding balances, and payment status per renter.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">RPT-003</td>
+                    <td>
+                        <strong>Petty Cash / Coins Report</strong><br>
+                        Monthly petty cash report grouped by category showing inflows, outflows, and net balance. Exportable to PDF via print-friendly view.
+                    </td>
+                    <td class="priority-med">Medium</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>6. User Management & Security</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">USR-001</td>
+                    <td>
+                        <strong>Users & Passwords</strong><br>
+                        Admin can create and manage user accounts with roles (admin, manager, viewer). Users have username, display name, and password. Passwords are securely hashed.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">USR-002</td>
+                    <td>
+                        <strong>Forgot Password / Security Question</strong><br>
+                        Users can recover their password using a security question set during account setup. Accessible from the login page.
+                    </td>
+                    <td class="priority-med">Medium</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">USR-003</td>
+                    <td>
+                        <strong>Login Required</strong><br>
+                        All pages require authentication. Unauthorized access redirects to login page.
+                    </td>
+                    <td class="priority-high">High</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>7. Additional Features</h2>
+
+        <table>
+            <thead>
+                <tr><th style="width:80px">Req ID</th><th>Requirement</th><th style="width:80px">Priority</th><th style="width:90px">Status</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="req-id">ADD-001</td>
+                    <td>
+                        <strong>Fee Schedule</strong><br>
+                        Configurable fee schedule (under Settings) with predefined fee types and amounts. Fees can be added as line items on receipts and invoices.
+                    </td>
+                    <td class="priority-med">Medium</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">ADD-002</td>
+                    <td>
+                        <strong>Dashboard</strong><br>
+                        Monthly overview showing expected rent, collected amounts, outstanding balances, and payment rates across all renters.
+                    </td>
+                    <td class="priority-med">Medium</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+                <tr>
+                    <td class="req-id">ADD-003</td>
+                    <td>
+                        <strong>Deposits Tracking</strong><br>
+                        Track bank deposit confirmations for receipts with deposit date and confirmation status.
+                    </td>
+                    <td class="priority-low">Low</td>
+                    <td><span class="status status-done">Complete</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>Notes & Additional Requirements</h2>
+        <div class="editable" contenteditable="true" style="min-height: 100px; border: 1px dashed #ccc; padding: 15px; margin: 10px 0;">
+            <em>Click here to add additional notes or requirements...</em>
+        </div>
+
+        <!-- ══════════════════════════════════════ -->
+        <h2>Sign-Off</h2>
+        <table style="border: none;">
+            <tr style="border: none;">
+                <td style="border: none; width: 50%; padding: 20px 10px;">
+                    <strong>Client:</strong><br><br>
+                    Signature: ___________________________<br><br>
+                    Name: ___________________________<br><br>
+                    Date: ___________________________
+                </td>
+                <td style="border: none; width: 50%; padding: 20px 10px;">
+                    <strong>GDI Digital Solutions:</strong><br><br>
+                    Signature: ___________________________<br><br>
+                    Name: ___________________________<br><br>
+                    Date: ___________________________
+                </td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="footer">
+        <strong>GDI Digital Solutions</strong> — Rent Management Dashboard Requirements Document v1.0<br>
+        This document is editable. Click on any underlined field to modify. Print or Save as PDF when finalized.
+    </div>
+</body>
+</html>
