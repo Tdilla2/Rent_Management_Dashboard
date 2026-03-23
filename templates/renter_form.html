@@ -2,35 +2,56 @@
 {% block title %}{{ 'Edit' if renter else 'Add' }} Renter{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-    <div class="col-md-6">
+    <div class="col-md-8">
         <div class="card">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0">{{ 'Edit' if renter else 'Add New' }} Renter</h5>
             </div>
             <div class="card-body">
                 <form method="post">
-                    <div class="mb-3">
-                        <label class="form-label">Name</label>
-                        <input type="text" name="name" class="form-control" value="{{ renter.name if renter else '' }}" required>
+                    <h6 class="fw-bold mb-3">Primary Leaseholder</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Name</label>
+                            <input type="text" name="name" class="form-control" value="{{ renter.name if renter else '' }}" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Unit/Lot</label>
+                            <input type="text" name="unit" class="form-control" value="{{ renter.unit if renter else '' }}" required>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Monthly Rent ($)</label>
+                            <input type="number" name="monthly_rent" class="form-control" step="0.01" value="{{ renter.monthly_rent if renter else '0' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Phone</label>
+                            <input type="text" name="phone" class="form-control" value="{{ renter.phone if renter else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control" value="{{ renter.email if renter else '' }}">
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Unit/Lot</label>
-                        <input type="text" name="unit" class="form-control" value="{{ renter.unit if renter else '' }}" required>
+
+                    <hr class="my-4">
+                    <h6 class="fw-bold mb-3">Co-Leaseholder <span class="text-muted fw-normal">(optional)</span></h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Co-Leaser Name</label>
+                            <input type="text" name="co_leaser" class="form-control" value="{{ renter.co_leaser if renter else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Co-Leaser Email</label>
+                            <input type="email" name="co_leaser_email" class="form-control" value="{{ renter.co_leaser_email if renter else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Co-Leaser Phone</label>
+                            <input type="text" name="co_leaser_phone" class="form-control" value="{{ renter.co_leaser_phone if renter else '' }}">
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Monthly Rent ($)</label>
-                        <input type="number" name="monthly_rent" class="form-control" step="0.01" value="{{ renter.monthly_rent if renter else '0' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Phone</label>
-                        <input type="text" name="phone" class="form-control" value="{{ renter.phone if renter else '' }}">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Email</label>
-                        <input type="email" name="email" class="form-control" value="{{ renter.email if renter else '' }}">
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button type="submit" class="btn btn-primary">{{ 'Update' if renter else 'Add' }} Renter</button>
+
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary"><i class="bi bi-save"></i> {{ 'Update' if renter else 'Add' }} Renter</button>
                         <a href="{{ url_for('renters_list') }}" class="btn btn-secondary">Cancel</a>
                     </div>
                 </form>

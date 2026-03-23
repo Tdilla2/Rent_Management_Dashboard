@@ -87,6 +87,7 @@
 
         <div class="mt-3 no-print d-flex gap-2 flex-wrap">
             <button onclick="window.print()" class="btn btn-outline-primary"><i class="bi bi-printer"></i> Print / Save PDF</button>
+            <a href="{{ url_for('edit_invoice', invoice_id=invoice.id) }}" class="btn btn-info"><i class="bi bi-pencil"></i> Edit Invoice</a>
             <a href="{{ url_for('invoices_list') }}" class="btn btn-secondary">Back</a>
 
             {% if not (invoice.late_fee_day6_applied and invoice.late_fee_day10_applied) %}

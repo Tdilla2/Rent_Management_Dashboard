@@ -110,6 +110,7 @@
         </div>
         <div class="mt-3 no-print">
             <button onclick="window.print()" class="btn btn-outline-success"><i class="bi bi-printer"></i> Print / Save PDF</button>
+            <a href="{{ url_for('edit_receipt', receipt_id=receipt.id) }}" class="btn btn-info"><i class="bi bi-pencil"></i> Edit Receipt</a>
             <a href="{{ url_for('receipts_list') }}" class="btn btn-secondary">Back</a>
         </div>
     </div>

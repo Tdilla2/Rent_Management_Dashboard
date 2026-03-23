@@ -44,9 +44,24 @@ def init_db():
             unit TEXT NOT NULL,
             monthly_rent NUMERIC(10,2) DEFAULT 0,
             phone TEXT DEFAULT '',
-            email TEXT DEFAULT ''
+            email TEXT DEFAULT '',
+            co_leaser TEXT DEFAULT '',
+            co_leaser_email TEXT DEFAULT '',
+            co_leaser_phone TEXT DEFAULT '',
+            is_active BOOLEAN DEFAULT TRUE
         )
     ''')
+    # Add new columns to renters table (safe if already exist)
+    for col, coldef in [
+        ('co_leaser', "TEXT DEFAULT ''"),
+        ('co_leaser_email', "TEXT DEFAULT ''"),
+        ('co_leaser_phone', "TEXT DEFAULT ''"),
+        ('is_active', 'BOOLEAN DEFAULT TRUE'),
+    ]:
+        try:
+            cur.execute(f"ALTER TABLE renters ADD COLUMN IF NOT EXISTS {col} {coldef}")
+        except Exception:
+            pass
 
     cur.execute('''
         CREATE TABLE IF NOT EXISTS payments (
@@ -532,10 +547,12 @@ def add_renter():
         conn = get_db()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO renters (name, unit, monthly_rent, phone, email) VALUES (%s,%s,%s,%s,%s)",
+            "INSERT INTO renters (name, unit, monthly_rent, phone, email, co_leaser, co_leaser_email, co_leaser_phone) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
             (request.form['name'], request.form['unit'],
              float(request.form.get('monthly_rent', 0)),
-             request.form.get('phone', ''), request.form.get('email', ''))
+             request.form.get('phone', ''), request.form.get('email', ''),
+             request.form.get('co_leaser', ''), request.form.get('co_leaser_email', ''),
+             request.form.get('co_leaser_phone', ''))
         )
         conn.commit()
         conn.close()
@@ -554,10 +571,12 @@ def edit_renter(renter_id):
     cur = conn.cursor()
     if request.method == 'POST':
         cur.execute(
-            "UPDATE renters SET name=%s, unit=%s, monthly_rent=%s, phone=%s, email=%s WHERE id=%s",
+            "UPDATE renters SET name=%s, unit=%s, monthly_rent=%s, phone=%s, email=%s, co_leaser=%s, co_leaser_email=%s, co_leaser_phone=%s WHERE id=%s",
             (request.form['name'], request.form['unit'],
              float(request.form.get('monthly_rent', 0)),
-             request.form.get('phone', ''), request.form.get('email', ''), renter_id)
+             request.form.get('phone', ''), request.form.get('email', ''),
+             request.form.get('co_leaser', ''), request.form.get('co_leaser_email', ''),
+             request.form.get('co_leaser_phone', ''), renter_id)
         )
         conn.commit()
         flash('Renter updated.', 'success')
@@ -568,6 +587,18 @@ def edit_renter(renter_id):
     settings = get_settings(conn)
     conn.close()
     return render_template('renter_form.html', renter=renter, settings=settings)
+
+
+@app.route('/renters/<int:renter_id>/toggle-active', methods=['POST'])
+@login_required
+def toggle_renter_active(renter_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("UPDATE renters SET is_active = NOT is_active WHERE id=%s", (renter_id,))
+    conn.commit()
+    conn.close()
+    flash('Renter status updated.', 'success')
+    return redirect(url_for('renters_list'))
 
 
 @app.route('/renters/<int:renter_id>/delete', methods=['POST'])
@@ -822,6 +853,54 @@ def view_invoice(invoice_id):
     return render_template('invoice_view.html', invoice=invoice, items=items,
                            subtotal=subtotal, settings=settings,
                            days_overdue=days_overdue, today=today)
+
+
+@app.route('/invoices/<int:invoice_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_invoice(invoice_id):
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT invoices.*, renters.name, renters.unit, renters.monthly_rent
+        FROM invoices JOIN renters ON invoices.renter_id = renters.id
+        WHERE invoices.id=%s
+    ''', (invoice_id,))
+    invoice = cur.fetchone()
+    if not invoice:
+        conn.close()
+        flash('Invoice not found.', 'danger')
+        return redirect(url_for('invoices_list'))
+
+    if request.method == 'POST':
+        cur.execute(
+            "UPDATE invoices SET invoice_date=%s, due_date=%s, period=%s, notes=%s WHERE id=%s",
+            (request.form.get('invoice_date', ''), request.form.get('due_date', ''),
+             request.form.get('period', ''), request.form.get('notes', ''), invoice_id)
+        )
+        # Delete existing items and re-insert
+        cur.execute("DELETE FROM invoice_items WHERE invoice_id=%s", (invoice_id,))
+        i = 0
+        while f'item_desc_{i}' in request.form:
+            desc = request.form.get(f'item_desc_{i}', '').strip()
+            qty = int(request.form.get(f'item_qty_{i}', 1))
+            price = float(request.form.get(f'item_price_{i}', 0))
+            if desc and price > 0:
+                cur.execute(
+                    "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+                    (invoice_id, desc, qty, price)
+                )
+            i += 1
+        conn.commit()
+        conn.close()
+        flash('Invoice updated.', 'success')
+        return redirect(url_for('view_invoice', invoice_id=invoice_id))
+
+    cur.execute("SELECT * FROM invoice_items WHERE invoice_id=%s ORDER BY id", (invoice_id,))
+    items = cur.fetchall()
+    conn.close()
+    return render_template('invoice_edit.html', invoice=invoice, items=items, settings=settings)
 
 
 @app.route('/invoices/<int:invoice_id>/apply-late-fees', methods=['POST'])
@@ -1121,6 +1200,56 @@ def view_receipt(receipt_id):
                            total=total, total_paid_month=total_paid_month,
                            fees_month=fees_month, monthly_rent=monthly_rent,
                            settings=settings)
+
+
+@app.route('/receipts/<int:receipt_id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_receipt(receipt_id):
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    cur.execute('''
+        SELECT receipts.*, renters.name, renters.unit, renters.monthly_rent
+        FROM receipts JOIN renters ON receipts.renter_id = renters.id
+        WHERE receipts.id=%s
+    ''', (receipt_id,))
+    receipt = cur.fetchone()
+    if not receipt:
+        conn.close()
+        flash('Receipt not found.', 'danger')
+        return redirect(url_for('receipts_list'))
+
+    if request.method == 'POST':
+        cur.execute(
+            "UPDATE receipts SET payment_date=%s, payment_method=%s, month=%s, invoice_ref=%s, receipt_type=%s WHERE id=%s",
+            (request.form.get('payment_date', ''), request.form.get('payment_method', ''),
+             request.form.get('month', ''), request.form.get('invoice_ref', ''),
+             request.form.get('receipt_type', 'payment'), receipt_id)
+        )
+        # Delete existing items and re-insert
+        cur.execute("DELETE FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
+        i = 0
+        while f'item_desc_{i}' in request.form:
+            desc = request.form.get(f'item_desc_{i}', '').strip()
+            period = request.form.get(f'item_period_{i}', '').strip()
+            amt = float(request.form.get(f'item_amt_{i}', 0))
+            if desc and amt > 0:
+                cur.execute(
+                    "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
+                    (receipt_id, desc, period, amt)
+                )
+            i += 1
+        conn.commit()
+        conn.close()
+        flash('Receipt updated.', 'success')
+        return redirect(url_for('view_receipt', receipt_id=receipt_id))
+
+    cur.execute("SELECT * FROM receipt_items WHERE receipt_id=%s ORDER BY id", (receipt_id,))
+    items = cur.fetchall()
+    conn.close()
+    return render_template('receipt_edit.html', receipt=receipt, items=items,
+                           settings=settings, months=MONTHS)
 
 
 @app.route('/receipts/<int:receipt_id>/confirm-deposit', methods=['POST'])
