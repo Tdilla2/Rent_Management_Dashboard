@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Petty Cash Report - {{ month_name }} {{ year }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-coin"></i> Petty Cash Report – {{ month_name }} {{ year }}</h3>
+    <div class="d-flex gap-2 no-print">
+        <form class="d-flex gap-2">
+            <select name="month" class="form-select form-select-sm" style="width:130px">
+                {% for i in range(1, 13) %}
+                <option value="{{ i }}" {{ 'selected' if i == month }}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:90px">
+            <button class="btn btn-sm btn-primary">Go</button>
+        </form>
+        <button onclick="window.print()" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i> Print</button>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card bg-success bg-opacity-10">
+            <div class="stat-value text-success">${{ "{:,.2f}".format(total_in) }}</div>
+            <div class="stat-label">Total In</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card bg-danger bg-opacity-10">
+            <div class="stat-value text-danger">${{ "{:,.2f}".format(total_out) }}</div>
+            <div class="stat-label">Total Out</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card {{ 'bg-success' if balance >= 0 else 'bg-danger' }} bg-opacity-10">
+            <div class="stat-value {{ 'text-success' if balance >= 0 else 'text-danger' }}">${{ "{:,.2f}".format(balance) }}</div>
+            <div class="stat-label">Net Balance</div>
+        </div>
+    </div>
+</div>
+
+{% if categories %}
+{% for cat_name, cat_data in categories.items() %}
+<div class="card mb-3">
+    <div class="card-header bg-light">
+        <h6 class="mb-0"><i class="bi bi-tag"></i> {{ cat_name|title }}</h6>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th class="text-end">In</th>
+                    <th class="text-end">Out</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in cat_data.items %}
+                <tr>
+                    <td>{{ t.transaction_date }}</td>
+                    <td>{{ t.description }}</td>
+                    <td class="text-end text-success">{{ "$" + "{:,.2f}".format(t.amount|float) if t.transaction_type == 'in' else '' }}</td>
+                    <td class="text-end text-danger">{{ "$" + "{:,.2f}".format(t.amount|float) if t.transaction_type == 'expense' else '' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-light fw-bold">
+                    <td colspan="2" class="text-end">Subtotal:</td>
+                    <td class="text-end text-success">${{ "{:,.2f}".format(cat_data.total_in) }}</td>
+                    <td class="text-end text-danger">${{ "{:,.2f}".format(cat_data.total_out) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="alert alert-info">No petty cash transactions for {{ month_name }} {{ year }}.</div>
+{% endif %}
+{% endblock %}

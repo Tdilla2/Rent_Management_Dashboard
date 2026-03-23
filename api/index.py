@@ -1570,6 +1570,217 @@ def fee_schedule():
     return render_template('fees.html', fees=fees, settings=settings)
 
 
+# ── REPORTS ──
+
+@app.route('/reports/petty-cash')
+@login_required
+def petty_cash_report():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', date.today().month, type=int)
+
+    start = f"{year}-{month:02d}-01"
+    if month == 12:
+        end = f"{year + 1}-01-01"
+    else:
+        end = f"{year}-{month + 1:02d}-01"
+
+    cur.execute(
+        "SELECT * FROM petty_cash WHERE transaction_date >= %s AND transaction_date < %s ORDER BY transaction_date, id",
+        (start, end)
+    )
+    transactions = cur.fetchall()
+
+    # Group by category
+    categories = {}
+    for t in transactions:
+        cat = t['category'] or 'miscellaneous'
+        if cat not in categories:
+            categories[cat] = {'items': [], 'total_in': 0, 'total_out': 0}
+        categories[cat]['items'].append(t)
+        if t['transaction_type'] == 'in':
+            categories[cat]['total_in'] += float(t['amount'])
+        else:
+            categories[cat]['total_out'] += float(t['amount'])
+
+    total_in = sum(c['total_in'] for c in categories.values())
+    total_out = sum(c['total_out'] for c in categories.values())
+
+    conn.close()
+    return render_template('petty_cash_report.html', categories=categories,
+                           total_in=total_in, total_out=total_out,
+                           balance=total_in - total_out,
+                           month=month, year=year, settings=settings,
+                           month_name=FULL_MONTHS[month - 1])
+
+
+@app.route('/reports/closing-statement')
+@login_required
+def closing_statement():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', date.today().month, type=int)
+    period = f"{FULL_MONTHS[month - 1]} {year}"
+    date_prefix = f"{year}-{month:02d}"
+
+    # Rent collection per renter
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY id")
+    renters = cur.fetchall()
+
+    renter_summary = []
+    total_expected = 0
+    total_collected = 0
+    total_fees = 0
+
+    for r in renters:
+        cur.execute(
+            "SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+            (r['id'], year, month)
+        )
+        pay = cur.fetchone()
+        paid = float(pay['amount_paid']) if pay else 0
+        fees = float(pay['fees']) if pay else 0
+        rent = float(r['monthly_rent'])
+        balance = rent + fees - paid
+        status = get_payment_status(r['monthly_rent'], paid, fees)
+        total_expected += rent
+        total_collected += paid
+        total_fees += fees
+        renter_summary.append({
+            'name': r['name'], 'unit': r['unit'], 'rent': rent,
+            'paid': paid, 'fees': fees, 'balance': balance, 'status': status,
+            'co_leaser': r.get('co_leaser', ''), 'is_active': r.get('is_active', True)
+        })
+
+    total_outstanding = total_expected + total_fees - total_collected
+    collection_rate = (total_collected / (total_expected + total_fees) * 100) if (total_expected + total_fees) > 0 else 0
+
+    # Invoice totals
+    cur.execute('''
+        SELECT COUNT(*) as count, COALESCE(SUM(ii.qty * ii.unit_price), 0) as total
+        FROM invoices
+        LEFT JOIN invoice_items ii ON ii.invoice_id = invoices.id
+        WHERE invoices.period = %s
+    ''', (period,))
+    inv_stats = cur.fetchone()
+
+    # Receipt totals
+    cur.execute('''
+        SELECT COUNT(DISTINCT receipts.id) as count, COALESCE(SUM(ri.amount), 0) as total
+        FROM receipts
+        LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+        WHERE receipts.payment_date LIKE %s
+    ''', (f"{date_prefix}%",))
+    rec_stats = cur.fetchone()
+
+    # Deposits confirmed
+    cur.execute('''
+        SELECT COUNT(DISTINCT receipts.id) as count, COALESCE(SUM(ri.amount), 0) as total
+        FROM receipts
+        LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+        WHERE receipts.deposit_confirmed = TRUE AND receipts.deposit_date LIKE %s
+    ''', (f"{date_prefix}%",))
+    dep_stats = cur.fetchone()
+
+    # Credits
+    cur.execute(
+        "SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM credits WHERE credit_date LIKE %s",
+        (f"{date_prefix}%",)
+    )
+    credit_stats = cur.fetchone()
+
+    # Petty cash
+    start = f"{year}-{month:02d}-01"
+    end = f"{year}-{month + 1:02d}-01" if month < 12 else f"{year + 1}-01-01"
+    cur.execute(
+        "SELECT transaction_type, COALESCE(SUM(amount), 0) as total FROM petty_cash WHERE transaction_date >= %s AND transaction_date < %s GROUP BY transaction_type",
+        (start, end)
+    )
+    petty = {row['transaction_type']: float(row['total']) for row in cur.fetchall()}
+
+    conn.close()
+    return render_template('closing_statement.html',
+                           renter_summary=renter_summary,
+                           total_expected=total_expected, total_collected=total_collected,
+                           total_fees=total_fees, total_outstanding=total_outstanding,
+                           collection_rate=collection_rate,
+                           inv_stats=inv_stats, rec_stats=rec_stats, dep_stats=dep_stats,
+                           credit_stats=credit_stats,
+                           petty_in=petty.get('in', 0), petty_out=petty.get('expense', 0),
+                           month=month, year=year, period=period, settings=settings,
+                           month_name=FULL_MONTHS[month - 1])
+
+
+@app.route('/reports/account-statement')
+@login_required
+def account_statement_report():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', 0, type=int)
+
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 ORDER BY name")
+    renters = cur.fetchall()
+
+    renter_statements = []
+    for r in renters:
+        date_prefix = f"{year}-{month:02d}" if month else f"{year}"
+
+        # Invoices
+        if month:
+            cur.execute('''
+                SELECT invoices.*, COALESCE(SUM(ii.qty * ii.unit_price), 0) as total
+                FROM invoices LEFT JOIN invoice_items ii ON ii.invoice_id = invoices.id
+                WHERE invoices.renter_id=%s AND invoices.invoice_date LIKE %s
+                GROUP BY invoices.id ORDER BY invoices.invoice_date ASC
+            ''', (r['id'], f"{date_prefix}%"))
+        else:
+            cur.execute('''
+                SELECT invoices.*, COALESCE(SUM(ii.qty * ii.unit_price), 0) as total
+                FROM invoices LEFT JOIN invoice_items ii ON ii.invoice_id = invoices.id
+                WHERE invoices.renter_id=%s AND (invoices.invoice_date LIKE %s OR invoices.period LIKE %s)
+                GROUP BY invoices.id ORDER BY invoices.invoice_date ASC
+            ''', (r['id'], f"{year}%", f"%{year}%"))
+        invoices = cur.fetchall()
+
+        # Receipts
+        cur.execute('''
+            SELECT receipts.*, COALESCE(SUM(ri.amount), 0) as total
+            FROM receipts LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+            WHERE receipts.renter_id=%s AND receipts.payment_date LIKE %s
+            GROUP BY receipts.id ORDER BY receipts.payment_date ASC
+        ''', (r['id'], f"{date_prefix}%"))
+        receipts = cur.fetchall()
+
+        # Credits
+        cur.execute(
+            "SELECT * FROM credits WHERE renter_id=%s AND credit_date LIKE %s ORDER BY credit_date ASC",
+            (r['id'], f"{date_prefix}%")
+        )
+        credits = cur.fetchall()
+
+        total_charges = sum(float(inv['total']) for inv in invoices)
+        total_payments = sum(float(rec['total']) for rec in receipts) + sum(float(cr['amount']) for cr in credits)
+        balance = total_charges - total_payments
+
+        renter_statements.append({
+            'renter': r, 'invoices': len(invoices), 'receipts': len(receipts),
+            'credits': len(credits), 'total_charges': total_charges,
+            'total_payments': total_payments, 'balance': balance
+        })
+
+    conn.close()
+    return render_template('account_statement_report.html',
+                           renter_statements=renter_statements,
+                           month=month, year=year, settings=settings,
+                           full_months=FULL_MONTHS)
+
+
 # ── SETTINGS ──
 
 @app.route('/settings', methods=['GET','POST'])
@@ -1767,7 +1978,43 @@ def cron_apply_late_fees():
     conn = get_db()
     cur = conn.cursor()
 
-    # Get all auto-generated invoices for current month that still have fees to apply
+    invoice_date = f"{year}-{month:02d}-01"
+    due_date = f"{year}-{month:02d}-05"
+
+    # Auto-create invoices for any active renters missing one this month
+    cur.execute("SELECT * FROM renters WHERE monthly_rent > 0 AND is_active = TRUE ORDER BY id")
+    all_renters = cur.fetchall()
+    cur.execute(
+        "SELECT renter_id FROM invoices WHERE auto_generated=TRUE AND period=%s",
+        (period,)
+    )
+    existing_renter_ids = {row['renter_id'] for row in cur.fetchall()}
+
+    num = get_next_invoice_number(cur)
+    auto_created = 0
+    for renter in all_renters:
+        if renter['id'] in existing_renter_ids:
+            continue
+        inv_num = f"INV-{num:04d}"
+        cur.execute(
+            """INSERT INTO invoices
+               (invoice_number, renter_id, invoice_date, due_date, period, notes,
+                auto_generated, month_year)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (inv_num, renter['id'], invoice_date, due_date, period,
+             f"Payment due by {due_date}. A 10% late fee plus $75 magistrate fee applies on day 6. An additional 10% applies on day 10.",
+             True, f"{year}-{month:02d}")
+        )
+        cur.execute("SELECT id FROM invoices WHERE invoice_number=%s", (inv_num,))
+        new_inv_id = cur.fetchone()['id']
+        cur.execute(
+            "INSERT INTO invoice_items (invoice_id, description, qty, unit_price) VALUES (%s,%s,%s,%s)",
+            (new_inv_id, 'Monthly Rent', 1, float(renter['monthly_rent']))
+        )
+        num += 1
+        auto_created += 1
+
+    # Now get all auto-generated invoices for current month that still have fees to apply
     cur.execute('''
         SELECT invoices.*, renters.monthly_rent
         FROM invoices JOIN renters ON invoices.renter_id = renters.id
@@ -1831,6 +2078,7 @@ def cron_apply_late_fees():
         'status': 'ok',
         'period': period,
         'day': today.day,
+        'invoices_auto_created': auto_created,
         'day6_applied': applied_day6,
         'day10_applied': applied_day10,
         'invoices_checked': len(invoices)

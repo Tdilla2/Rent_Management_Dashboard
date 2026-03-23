@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Closing Statement - {{ month_name }} {{ year }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-file-earmark-check"></i> Monthly Closing Statement</h3>
+    <div class="d-flex gap-2 no-print">
+        <form class="d-flex gap-2">
+            <select name="month" class="form-select form-select-sm" style="width:130px">
+                {% for i in range(1, 13) %}
+                <option value="{{ i }}" {{ 'selected' if i == month }}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:90px">
+            <button class="btn btn-sm btn-primary">Go</button>
+        </form>
+        <button onclick="window.print()" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i> Print</button>
+    </div>
+</div>
+
+<!-- Header -->
+<div class="card mb-4">
+    <div class="card-body text-center py-3">
+        <h4 class="mb-1">{{ settings.company_name }}</h4>
+        <p class="text-muted mb-1">{{ settings.company_address }}</p>
+        <h5 class="text-primary mb-0">Closing Statement – {{ month_name }} {{ year }}</h5>
+    </div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row mb-4">
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="stat-value text-primary">${{ "{:,.0f}".format(total_expected) }}</div>
+            <div class="stat-label">Expected Rent</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="stat-value text-success">${{ "{:,.0f}".format(total_collected) }}</div>
+            <div class="stat-label">Collected</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="stat-value text-danger">${{ "{:,.0f}".format(total_outstanding) }}</div>
+            <div class="stat-label">Outstanding</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="stat-value text-warning">${{ "{:,.0f}".format(total_fees) }}</div>
+            <div class="stat-label">Fees</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="stat-value text-info">{{ "{:.1f}".format(collection_rate) }}%</div>
+            <div class="stat-label">Collection Rate</div>
+        </div>
+    </div>
+    <div class="col-md-2">
+        <div class="card stat-card">
+            <div class="stat-value">{{ inv_stats.count or 0 }}</div>
+            <div class="stat-label">Invoices Issued</div>
+        </div>
+    </div>
+</div>
+
+<!-- Rent Roll Summary -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h6 class="mb-0"><i class="bi bi-people"></i> Rent Roll Summary</h6>
+    </div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-sm table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Renter</th>
+                    <th>Unit</th>
+                    <th class="text-end">Rent Due</th>
+                    <th class="text-end">Paid</th>
+                    <th class="text-end">Fees</th>
+                    <th class="text-end">Balance</th>
+                    <th class="text-center">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in renter_summary %}
+                <tr class="{{ 'table-secondary' if not r.is_active }}">
+                    <td>
+                        <strong>{{ r.name }}</strong>
+                        {% if r.co_leaser %}<br><small class="text-muted">{{ r.co_leaser }}</small>{% endif %}
+                    </td>
+                    <td>{{ r.unit }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(r.rent) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(r.paid) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(r.fees) }}</td>
+                    <td class="text-end fw-bold {{ 'text-danger' if r.balance > 0 else 'text-success' }}">
+                        ${{ "{:,.2f}".format(r.balance) }}
+                    </td>
+                    <td class="text-center">
+                        {% if r.status == 'Paid' %}<span class="badge bg-success">Paid</span>
+                        {% elif r.status == 'Partial' %}<span class="badge bg-warning text-dark">Partial</span>
+                        {% elif r.status == 'Unpaid' %}<span class="badge bg-danger">Unpaid</span>
+                        {% else %}<span class="badge bg-secondary">--</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-primary fw-bold">
+                    <td colspan="2">TOTALS</td>
+                    <td class="text-end">${{ "{:,.2f}".format(total_expected) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(total_collected) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(total_fees) }}</td>
+                    <td class="text-end">${{ "{:,.2f}".format(total_outstanding) }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- Financial Summary -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="bi bi-cash-stack"></i> Collections & Deposits</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr><td>Receipts Issued</td><td class="text-end"><strong>{{ rec_stats.count or 0 }}</strong></td></tr>
+                    <tr><td>Total Receipts</td><td class="text-end"><strong>${{ "{:,.2f}".format(rec_stats.total|float) }}</strong></td></tr>
+                    <tr><td>Deposits Confirmed</td><td class="text-end"><strong>{{ dep_stats.count or 0 }}</strong></td></tr>
+                    <tr><td>Deposits Total</td><td class="text-end"><strong>${{ "{:,.2f}".format(dep_stats.total|float) }}</strong></td></tr>
+                    <tr><td>Credits/Refunds</td><td class="text-end"><strong>{{ credit_stats.count or 0 }} (${{ "{:,.2f}".format(credit_stats.total|float) }})</strong></td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="bi bi-coin"></i> Petty Cash Summary</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tr><td>Cash In</td><td class="text-end text-success"><strong>${{ "{:,.2f}".format(petty_in) }}</strong></td></tr>
+                    <tr><td>Cash Out</td><td class="text-end text-danger"><strong>${{ "{:,.2f}".format(petty_out) }}</strong></td></tr>
+                    <tr class="table-light"><td><strong>Petty Cash Net</strong></td>
+                        <td class="text-end"><strong class="{{ 'text-success' if (petty_in - petty_out) >= 0 else 'text-danger' }}">${{ "{:,.2f}".format(petty_in - petty_out) }}</strong></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Outstanding Balances -->
+{% set outstanding_renters = renter_summary|selectattr('balance', 'gt', 0)|list %}
+{% if outstanding_renters %}
+<div class="card mb-4">
+    <div class="card-header bg-danger text-white">
+        <h6 class="mb-0"><i class="bi bi-exclamation-triangle"></i> Outstanding Balances ({{ outstanding_renters|length }})</h6>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Renter</th><th>Unit</th><th class="text-end">Balance Due</th><th class="text-center">Status</th></tr></thead>
+            <tbody>
+                {% for r in outstanding_renters %}
+                <tr>
+                    <td><strong>{{ r.name }}</strong></td>
+                    <td>{{ r.unit }}</td>
+                    <td class="text-end text-danger fw-bold">${{ "{:,.2f}".format(r.balance) }}</td>
+                    <td class="text-center">
+                        {% if r.status == 'Partial' %}<span class="badge bg-warning text-dark">Partial</span>
+                        {% else %}<span class="badge bg-danger">Unpaid</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr class="table-danger fw-bold">
+                    <td colspan="2">TOTAL OUTSTANDING</td>
+                    <td class="text-end">${{ "{:,.2f}".format(outstanding_renters|sum(attribute='balance')) }}</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

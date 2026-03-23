@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Account Statements{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3><i class="bi bi-file-earmark-ruled"></i> Account Statements – {{ full_months[month - 1] + ' ' if month else '' }}{{ year }}</h3>
+    <div class="d-flex gap-2 no-print">
+        <form class="d-flex gap-2">
+            <select name="month" class="form-select form-select-sm" style="width:130px">
+                <option value="0" {{ 'selected' if not month }}>Full Year</option>
+                {% for i in range(1, 13) %}
+                <option value="{{ i }}" {{ 'selected' if i == month }}>{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i-1] }}</option>
+                {% endfor %}
+            </select>
+            <input type="number" name="year" value="{{ year }}" class="form-control form-control-sm" style="width:90px">
+            <button class="btn btn-sm btn-primary">Go</button>
+        </form>
+        <button onclick="window.print()" class="btn btn-sm btn-outline-primary"><i class="bi bi-printer"></i> Print All</button>
+    </div>
+</div>
+
+{% for rs in renter_statements %}
+{% if rs.invoices > 0 or rs.receipts > 0 or rs.credits > 0 %}
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center {{ 'bg-danger text-white' if rs.balance > 0 else 'bg-success text-white' }}">
+        <div>
+            <strong>{{ rs.renter.name }}</strong> – Unit {{ rs.renter.unit }}
+            {% if rs.renter.co_leaser %}
+            <small class="opacity-75">| Co-leaser: {{ rs.renter.co_leaser }}</small>
+            {% endif %}
+        </div>
+        <div>
+            <a href="{{ url_for('renter_statement', renter_id=rs.renter.id, year=year) }}" class="btn btn-sm btn-light">
+                <i class="bi bi-eye"></i> Full Statement
+            </a>
+        </div>
+    </div>
+    <div class="card-body py-2 px-3">
+        <div class="row text-center">
+            <div class="col">
+                <small class="text-muted d-block">Invoices</small>
+                <strong>{{ rs.invoices }}</strong>
+            </div>
+            <div class="col">
+                <small class="text-muted d-block">Receipts</small>
+                <strong>{{ rs.receipts }}</strong>
+            </div>
+            <div class="col">
+                <small class="text-muted d-block">Credits</small>
+                <strong>{{ rs.credits }}</strong>
+            </div>
+            <div class="col">
+                <small class="text-muted d-block">Total Charges</small>
+                <strong>${{ "{:,.2f}".format(rs.total_charges) }}</strong>
+            </div>
+            <div class="col">
+                <small class="text-muted d-block">Total Payments</small>
+                <strong class="text-success">${{ "{:,.2f}".format(rs.total_payments) }}</strong>
+            </div>
+            <div class="col">
+                <small class="text-muted d-block">Balance</small>
+                <strong class="{{ 'text-danger' if rs.balance > 0 else 'text-success' }}">
+                    ${{ "{:,.2f}".format(rs.balance) }}
+                </strong>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% set total_charges = renter_statements|sum(attribute='total_charges') %}
+{% set total_payments = renter_statements|sum(attribute='total_payments') %}
+{% set total_balance = renter_statements|sum(attribute='balance') %}
+
+{% if renter_statements %}
+<div class="card">
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-4">
+                <div class="stat-value text-primary">${{ "{:,.2f}".format(total_charges) }}</div>
+                <div class="stat-label">Total Charges</div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-value text-success">${{ "{:,.2f}".format(total_payments) }}</div>
+                <div class="stat-label">Total Payments</div>
+            </div>
+            <div class="col-md-4">
+                <div class="stat-value {{ 'text-danger' if total_balance > 0 else 'text-success' }}">${{ "{:,.2f}".format(total_balance) }}</div>
+                <div class="stat-label">Total Balance</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">No account activity for this period.</div>
+{% endif %}
+{% endblock %}
