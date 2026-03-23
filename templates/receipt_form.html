@@ -78,21 +78,25 @@
                     <div class="mt-3" id="balanceInfo" style="display:none;">
                         <div class="alert mb-0" id="balanceAlert">
                             <div class="row text-center">
-                                <div class="col-md-3">
+                                <div class="col">
                                     <small class="text-muted d-block">Monthly Rent</small>
                                     <strong id="infoRent">$0</strong>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col">
                                     <small class="text-muted d-block">Already Paid</small>
                                     <strong id="infoPaid">$0</strong>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col">
                                     <small class="text-muted d-block">Fees</small>
                                     <strong id="infoFees">$0</strong>
                                 </div>
-                                <div class="col-md-3">
-                                    <small class="text-muted d-block">Remaining Balance</small>
+                                <div class="col">
+                                    <small class="text-muted d-block">Balance Due</small>
                                     <strong id="infoRemaining" class="fs-5">$0</strong>
+                                </div>
+                                <div class="col">
+                                    <small class="text-muted d-block">After This Payment</small>
+                                    <strong id="infoAfterPayment" class="fs-5">$0</strong>
                                 </div>
                             </div>
                         </div>
@@ -280,7 +284,7 @@ function fetchBalance() {
                 const firstAmt = document.querySelector('input[name="item_amt_0"]');
                 const firstDesc = document.querySelector('select[name="item_desc_0"]');
                 if (firstDesc && firstDesc.value === 'Rent' && (parseFloat(firstAmt.value) === 0 || !firstAmt.value)) {
-                    firstAmt.value = Math.min(data.rent, data.remaining).toFixed(2);
+                    firstAmt.value = data.rent.toFixed(2);
                 }
             }
 
@@ -303,9 +307,7 @@ function prefillAmount(selectEl, idx) {
         const prefill = parseFloat(selectedOpt.getAttribute('data-amount')) || 0;
 
         if (selectEl.value === 'Rent') {
-            amtInput.value = currentRemaining !== null
-                ? Math.min(currentRent, currentRemaining).toFixed(2)
-                : currentRent.toFixed(2);
+            amtInput.value = currentRent.toFixed(2);
         } else if (prefill > 0) {
             amtInput.value = prefill.toFixed(2);
         } else {
@@ -345,6 +347,22 @@ function updateTotal() {
             ' <small class="text-success">- $' + creditAmt.toFixed(2) + ' credit = <strong>$' + netTotal.toFixed(2) + '</strong></small>';
     } else {
         document.getElementById('totalAmount').textContent = '$' + total.toFixed(2);
+    }
+
+    // Update "After This Payment" in the balance info box
+    const afterEl = document.getElementById('infoAfterPayment');
+    if (afterEl && currentRemaining !== null) {
+        const afterBalance = currentRemaining - total;
+        if (afterBalance > 0) {
+            afterEl.textContent = '$' + afterBalance.toFixed(2) + ' due';
+            afterEl.className = 'fs-5 text-danger';
+        } else if (afterBalance < 0) {
+            afterEl.textContent = '$' + Math.abs(afterBalance).toFixed(2) + ' credit';
+            afterEl.className = 'fs-5 text-success';
+        } else {
+            afterEl.textContent = '$0.00 Paid';
+            afterEl.className = 'fs-5 text-success';
+        }
     }
 
     const err = document.getElementById('totalError');
