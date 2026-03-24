@@ -877,6 +877,7 @@ def unpaid_list():
     renters = cur.fetchall()
 
     unpaid = []
+    month_abbr = MONTHS[month - 1]
     for r in renters:
         cur.execute(
             "SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
@@ -885,9 +886,25 @@ def unpaid_list():
         pay = cur.fetchone()
         amt = float(pay['amount_paid']) if pay else 0
         fee = float(pay['fees']) if pay else 0
+
+        # Check for invoice charges for this renter/month
+        cur.execute('''
+            SELECT COALESCE(SUM(ii.qty * ii.unit_price), 0) as total
+            FROM invoice_items ii
+            JOIN invoices inv ON ii.invoice_id = inv.id
+            WHERE inv.renter_id = %s AND (
+                inv.period ILIKE %s OR inv.period ILIKE %s
+            )
+        ''', (r['id'], f'%{month_abbr}%{year}%', f'%{FULL_MONTHS[month-1]}%{year}%'))
+        inv_total = float(cur.fetchone()['total'])
+
+        # Use invoice total if it's higher than rent + fees
+        total_due = max(inv_total, float(r['monthly_rent']) + fee) if inv_total > 0 else float(r['monthly_rent']) + fee
+        remaining = total_due - amt
         status = get_payment_status(r['monthly_rent'], amt, fee)
         unpaid.append({
-            'renter': r, 'amt': amt, 'fee': fee, 'status': status
+            'renter': r, 'amt': amt, 'fee': fee, 'status': status,
+            'total_due': total_due, 'remaining': max(remaining, 0)
         })
 
     conn.close()

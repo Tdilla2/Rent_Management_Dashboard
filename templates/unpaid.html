@@ -24,6 +24,7 @@
                     <th>Renter Name</th>
                     <th>Unit/Lot</th>
                     <th>Monthly Rent</th>
+                    <th>Total Due</th>
                     <th>Amt Paid</th>
                     <th>Fees</th>
                     <th>Remaining</th>
@@ -38,11 +39,11 @@
                     <td><strong>{{ u.renter.name }}</strong></td>
                     <td>{{ u.renter.unit }}</td>
                     <td>${{ "{:,.0f}".format(u.renter.monthly_rent) }}</td>
+                    <td>${{ "{:,.2f}".format(u.total_due) }}</td>
                     <td>${{ "{:,.0f}".format(u.amt) }}</td>
                     <td>${{ "{:,.0f}".format(u.fee) }}</td>
-                    {% set remaining = (u.renter.monthly_rent|float + u.fee) - u.amt %}
-                    <td class="{{ 'text-danger fw-bold' if remaining > 0 else 'text-success' }}">
-                        ${{ "{:,.2f}".format(remaining if remaining > 0 else 0) }}
+                    <td class="{{ 'text-danger fw-bold' if u.remaining > 0 else 'text-success' }}">
+                        ${{ "{:,.2f}".format(u.remaining) }}
                     </td>
                     <td>
                         <span class="badge {% if u.status == 'Paid' %}bg-success{% elif u.status == 'Unpaid' %}bg-danger{% elif u.status == 'Partial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
