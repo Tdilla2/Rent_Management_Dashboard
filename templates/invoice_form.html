@@ -54,10 +54,15 @@
                             <div id="additionalCharges">
                                 <div class="row g-2 mb-2 charge-row">
                                     <div class="col-md-7">
-                                        <input type="text" name="charge_desc[]" class="form-control" placeholder="Description (e.g. Parking, Utilities)">
+                                        <select name="charge_desc[]" class="form-select charge-select" onchange="updateChargeAmount(this)">
+                                            <option value="" data-amount="0">-- Select Charge --</option>
+                                            {% for fee in fee_types %}
+                                            <option value="{{ fee.fee_type }}" data-amount="{{ fee.amount }}">{{ fee.fee_type }} - ${{ "{:,.2f}".format(fee.amount) }}</option>
+                                            {% endfor %}
+                                        </select>
                                     </div>
                                     <div class="col-md-4">
-                                        <input type="number" name="charge_amount[]" class="form-control" step="0.01" placeholder="Amount ($)">
+                                        <input type="number" name="charge_amount[]" class="form-control charge-amount" step="0.01" placeholder="Amount ($)">
                                     </div>
                                     <div class="col-md-1 d-flex align-items-center">
                                         <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCharge(this)" title="Remove">&times;</button>
@@ -88,11 +93,19 @@ function updateFeeAmount() {
     const amt = sel.options[sel.selectedIndex].getAttribute('data-amount');
     document.getElementById('feeAmount').value = parseFloat(amt) || 0;
 }
+function updateChargeAmount(sel) {
+    const amt = sel.options[sel.selectedIndex].getAttribute('data-amount');
+    sel.closest('.charge-row').querySelector('.charge-amount').value = parseFloat(amt) || '';
+}
 function addCharge() {
     const container = document.getElementById('additionalCharges');
+    const firstSelect = container.querySelector('.charge-select');
     const row = document.createElement('div');
     row.className = 'row g-2 mb-2 charge-row';
-    row.innerHTML = '<div class="col-md-7"><input type="text" name="charge_desc[]" class="form-control" placeholder="Description (e.g. Parking, Utilities)"></div><div class="col-md-4"><input type="number" name="charge_amount[]" class="form-control" step="0.01" placeholder="Amount ($)"></div><div class="col-md-1 d-flex align-items-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCharge(this)" title="Remove">&times;</button></div>';
+    row.innerHTML = '<div class="col-md-7">' + firstSelect.outerHTML.replace(/ onchange="[^"]*"/, '') + '</div><div class="col-md-4"><input type="number" name="charge_amount[]" class="form-control charge-amount" step="0.01" placeholder="Amount ($)"></div><div class="col-md-1 d-flex align-items-center"><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeCharge(this)" title="Remove">&times;</button></div>';
+    const newSelect = row.querySelector('.charge-select');
+    newSelect.value = '';
+    newSelect.setAttribute('onchange', 'updateChargeAmount(this)');
     container.appendChild(row);
 }
 function removeCharge(btn) {
@@ -100,7 +113,9 @@ function removeCharge(btn) {
     if (rows.length > 1) {
         btn.closest('.charge-row').remove();
     } else {
-        btn.closest('.charge-row').querySelectorAll('input').forEach(i => i.value = '');
+        const row = btn.closest('.charge-row');
+        row.querySelector('.charge-select').value = '';
+        row.querySelector('.charge-amount').value = '';
     }
 }
 </script>
