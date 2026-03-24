@@ -178,6 +178,7 @@ let currentRemaining = null;
 let currentRent = 0;
 let currentInvoiceId = 0;
 let lineIdx = 1;
+let invoiceOriginals = {}; // maps item index to original invoice charge amount
 
 const feeOptions = `
     <option value="Rent" data-amount="0">Rent</option>
@@ -222,13 +223,19 @@ function loadInvoice() {
             // Build line items from invoice
             const tbody = document.getElementById('lineItems');
             tbody.innerHTML = '';
+            invoiceOriginals = {};
             data.items.forEach((item, i) => {
+                invoiceOriginals[i] = item.original;
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>
                         <input type="text" name="item_desc_${i}" class="form-control form-control-sm" value="${item.description}" readonly>
+                        <input type="hidden" name="item_original_${i}" value="${item.original.toFixed(2)}">
+                        <small class="text-muted">Charged: $${item.original.toFixed(2)}</small>
                     </td>
-                    <td><input type="number" name="item_amt_${i}" class="form-control form-control-sm item-amount" step="0.01" value="${item.amount.toFixed(2)}" oninput="updateTotal()"></td>
+                    <td><input type="number" name="item_amt_${i}" class="form-control form-control-sm item-amount" step="0.01" value="${item.amount.toFixed(2)}" oninput="updateTotal()" data-original="${item.original.toFixed(2)}">
+                        <small class="item-diff text-muted"></small>
+                    </td>
                     <td>${i > 0 ? '<button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove(); updateTotal();"><i class="bi bi-trash"></i></button>' : ''}</td>
                 `;
                 tbody.appendChild(row);
@@ -337,7 +344,33 @@ function addLineItem() {
 function updateTotal() {
     const amounts = document.querySelectorAll('.item-amount');
     let total = 0;
-    amounts.forEach(inp => { total += parseFloat(inp.value) || 0; });
+    let totalOriginal = 0;
+    let totalDiff = 0;
+
+    amounts.forEach(inp => {
+        const paid = parseFloat(inp.value) || 0;
+        total += paid;
+        const orig = parseFloat(inp.getAttribute('data-original'));
+        if (!isNaN(orig)) {
+            totalOriginal += orig;
+            const diff = orig - paid;
+            totalDiff += diff;
+            // Show per-item difference
+            const diffEl = inp.parentNode.querySelector('.item-diff');
+            if (diffEl) {
+                if (Math.abs(diff) < 0.005) {
+                    diffEl.textContent = 'Paid in full';
+                    diffEl.className = 'item-diff text-success small';
+                } else if (diff > 0) {
+                    diffEl.textContent = '$' + diff.toFixed(2) + ' remaining';
+                    diffEl.className = 'item-diff text-danger small';
+                } else {
+                    diffEl.textContent = '$' + Math.abs(diff).toFixed(2) + ' overpaid';
+                    diffEl.className = 'item-diff text-success small';
+                }
+            }
+        }
+    });
 
     const creditAmt = parseFloat(document.getElementById('creditAmount').value) || 0;
     const netTotal = total - creditAmt;
@@ -352,11 +385,17 @@ function updateTotal() {
     // Update "After This Payment" in the balance info box
     const afterEl = document.getElementById('infoAfterPayment');
     if (afterEl && currentRemaining !== null) {
-        const afterBalance = currentRemaining - total;
-        if (afterBalance > 0) {
+        // If invoice loaded, use item-level diff for remaining balance
+        let afterBalance;
+        if (currentInvoiceId && totalOriginal > 0) {
+            afterBalance = totalDiff;
+        } else {
+            afterBalance = currentRemaining - total;
+        }
+        if (afterBalance > 0.005) {
             afterEl.textContent = '$' + afterBalance.toFixed(2) + ' due';
             afterEl.className = 'fs-5 text-danger';
-        } else if (afterBalance < 0) {
+        } else if (afterBalance < -0.005) {
             afterEl.textContent = '$' + Math.abs(afterBalance).toFixed(2) + ' credit';
             afterEl.className = 'fs-5 text-success';
         } else {
@@ -376,6 +415,19 @@ function updateTotal() {
         err.style.display = 'block';
         err.textContent = 'Total must be greater than $0.';
         btn.disabled = true;
+    } else if (hasInvoice && totalDiff < -0.005) {
+        const overpay = Math.abs(totalDiff).toFixed(2);
+        err.style.display = 'block';
+        err.textContent = `Payment exceeds invoice total by $${overpay} — this will be recorded as a credit.`;
+        err.className = 'text-info mb-2';
+        err.style.fontWeight = '600';
+        btn.disabled = false;
+    } else if (hasInvoice && totalDiff > 0.005) {
+        err.style.display = 'block';
+        err.textContent = `$${totalDiff.toFixed(2)} remaining balance on this invoice.`;
+        err.className = 'text-warning mb-2';
+        err.style.fontWeight = '600';
+        btn.disabled = false;
     } else if (!isDeposit && !hasInvoice && currentRemaining !== null && currentRemaining <= 0 && total > 0) {
         err.style.display = 'block';
         err.textContent = 'This month is paid in full. Any payment will be recorded as a credit.';

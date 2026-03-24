@@ -1518,21 +1518,23 @@ def create_receipt():
         cur.execute("SELECT * FROM renters WHERE id=%s", (renter_id,))
         renter = cur.fetchone()
 
-        # Collect line items from form
+        # Collect line items from form (with original invoice amounts if present)
         line_items = []
         i = 0
         while f'item_desc_{i}' in request.form:
             desc = request.form.get(f'item_desc_{i}', '').strip()
             amt = float(request.form.get(f'item_amt_{i}', 0))
+            orig = request.form.get(f'item_original_{i}', '')
+            original = float(orig) if orig else None
             if desc and amt > 0:
-                line_items.append((desc, amt))
+                line_items.append((desc, amt, original))
             i += 1
         if not line_items:
             amount = float(request.form.get('amount', 0))
             if amount > 0:
-                line_items.append(('Rent', amount))
+                line_items.append(('Rent', amount, None))
 
-        total_amount = sum(amt for _, amt in line_items)
+        total_amount = sum(amt for _, amt, _ in line_items)
 
         # Calculate overpayment / credit
         month_num = MONTHS.index(month) + 1 if month in MONTHS else None
@@ -1544,43 +1546,51 @@ def create_receipt():
                     pay_year = int(pay_date.split('-')[0])
                 except (IndexError, ValueError):
                     pass
-            cur.execute(
-                "SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
-                (renter_id, pay_year, month_num)
-            )
-            pay = cur.fetchone()
-            already_paid = float(pay['amount_paid']) if pay else 0
-            fees = float(pay['fees']) if pay else 0
-            total_due = float(renter['monthly_rent']) + fees
 
-            if from_invoice:
-                cur.execute("SELECT id FROM invoices WHERE invoice_number=%s", (from_invoice,))
-                inv = cur.fetchone()
-                if inv:
-                    cur.execute(
-                        "SELECT SUM(qty * unit_price) as total FROM invoice_items WHERE invoice_id=%s",
-                        (inv['id'],)
-                    )
-                    inv_total = cur.fetchone()
-                    if inv_total and inv_total['total']:
-                        total_due = max(float(inv_total['total']), total_due)
+            # If loading from invoice with per-item originals, use item-level diff
+            has_originals = from_invoice and any(orig is not None for _, _, orig in line_items)
+            if has_originals:
+                total_original = sum(orig for _, _, orig in line_items if orig is not None)
+                if total_amount > total_original:
+                    overpayment = round(total_amount - total_original, 2)
+            else:
+                cur.execute(
+                    "SELECT amount_paid, fees FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+                    (renter_id, pay_year, month_num)
+                )
+                pay = cur.fetchone()
+                already_paid = float(pay['amount_paid']) if pay else 0
+                fees = float(pay['fees']) if pay else 0
+                total_due = float(renter['monthly_rent']) + fees
 
-            # Add non-rent charges (keys, deposits, etc.) to total_due
-            non_rent_this = sum(amt for desc, amt in line_items
-                                if desc.lower() not in ('rent', 'monthly rent'))
-            # Also get non-rent charges from OTHER receipts this month
-            cur.execute('''
-                SELECT COALESCE(SUM(ri.amount), 0) as total
-                FROM receipt_items ri JOIN receipts r ON ri.receipt_id = r.id
-                WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment'
-                  AND ri.amount > 0 AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
-            ''', (renter_id, month))
-            non_rent_other = float(cur.fetchone()['total'])
-            total_due += non_rent_this + non_rent_other
+                if from_invoice:
+                    cur.execute("SELECT id FROM invoices WHERE invoice_number=%s", (from_invoice,))
+                    inv = cur.fetchone()
+                    if inv:
+                        cur.execute(
+                            "SELECT SUM(qty * unit_price) as total FROM invoice_items WHERE invoice_id=%s",
+                            (inv['id'],)
+                        )
+                        inv_total = cur.fetchone()
+                        if inv_total and inv_total['total']:
+                            total_due = max(float(inv_total['total']), total_due)
 
-            remaining = total_due - already_paid
-            if total_amount > remaining and remaining >= 0:
-                overpayment = round(total_amount - remaining, 2)
+                # Add non-rent charges (keys, deposits, etc.) to total_due
+                non_rent_this = sum(amt for desc, amt, _ in line_items
+                                    if desc.lower() not in ('rent', 'monthly rent'))
+                # Also get non-rent charges from OTHER receipts this month
+                cur.execute('''
+                    SELECT COALESCE(SUM(ri.amount), 0) as total
+                    FROM receipt_items ri JOIN receipts r ON ri.receipt_id = r.id
+                    WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment'
+                      AND ri.amount > 0 AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
+                ''', (renter_id, month))
+                non_rent_other = float(cur.fetchone()['total'])
+                total_due += non_rent_this + non_rent_other
+
+                remaining = total_due - already_paid
+                if total_amount > remaining and remaining >= 0:
+                    overpayment = round(total_amount - remaining, 2)
 
         cur.execute(
             "INSERT INTO receipts (receipt_number, renter_id, payment_date, payment_method, month, invoice_ref, receipt_type) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id",
@@ -1588,7 +1598,7 @@ def create_receipt():
         )
         receipt_id = cur.fetchone()['id']
 
-        for desc, amt in line_items:
+        for desc, amt, _ in line_items:
             cur.execute(
                 "INSERT INTO receipt_items (receipt_id, description, period, amount) VALUES (%s,%s,%s,%s)",
                 (receipt_id, desc, month, amt)
@@ -2618,7 +2628,7 @@ def api_invoice_details(invoice_id):
         'monthly_rent': float(invoice['monthly_rent']),
         'period': invoice['period'],
         'month': inv_month,
-        'items': [{'description': it['description'], 'amount': float(it['qty']) * float(it['unit_price'])} for it in items],
+        'items': [{'description': it['description'], 'amount': float(it['qty']) * float(it['unit_price']), 'original': float(it['qty']) * float(it['unit_price'])} for it in items],
         'total': sum(float(it['qty']) * float(it['unit_price']) for it in items)
     })
 
