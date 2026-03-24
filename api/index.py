@@ -12,6 +12,7 @@ import boto3
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload limit
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
 
 S3_BUCKET = os.environ.get('S3_DOCUMENTS_BUCKET', 'rent-mgmt-documents-130423149110')
 s3_client = boto3.client('s3', region_name='us-east-1')
@@ -309,6 +310,7 @@ def admin_required(f):
 def load_user():
     g.user = None
     if 'user_id' in session:
+        session.permanent = True  # refresh session expiry on each request
         g.user = {
             'id': session['user_id'],
             'username': session.get('username'),
@@ -1765,6 +1767,62 @@ def view_receipt(receipt_id):
                            fees_month=fees_month, monthly_rent=monthly_rent,
                            renter_credit_balance=renter_credit_balance,
                            settings=settings)
+
+
+@app.route('/receipts/<int:receipt_id>/delete', methods=['POST'])
+@login_required
+def delete_receipt(receipt_id):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM receipts WHERE id=%s", (receipt_id,))
+    receipt = cur.fetchone()
+    if not receipt:
+        conn.close()
+        flash('Receipt not found.', 'danger')
+        return redirect(url_for('receipts_list'))
+
+    # Reverse payment from payments table
+    month_name = receipt['month'] or ''
+    if month_name in MONTHS and receipt['receipt_type'] == 'payment':
+        month_num = MONTHS.index(month_name) + 1
+        settings = get_settings(conn)
+        pay_year = settings['current_year']
+        if receipt['payment_date']:
+            try:
+                pay_year = int(receipt['payment_date'].split('-')[0])
+            except (IndexError, ValueError):
+                pass
+
+        # Get total of positive receipt items to subtract from payments
+        cur.execute(
+            "SELECT COALESCE(SUM(amount), 0) as total FROM receipt_items WHERE receipt_id=%s AND amount > 0",
+            (receipt_id,)
+        )
+        receipt_total = float(cur.fetchone()['total'])
+
+        cur.execute(
+            "SELECT amount_paid FROM payments WHERE renter_id=%s AND year=%s AND month=%s",
+            (receipt['renter_id'], pay_year, month_num)
+        )
+        pay = cur.fetchone()
+        if pay:
+            new_amt = max(float(pay['amount_paid']) - receipt_total, 0)
+            cur.execute(
+                "UPDATE payments SET amount_paid=%s WHERE renter_id=%s AND year=%s AND month=%s",
+                (new_amt, receipt['renter_id'], pay_year, month_num)
+            )
+
+    # Delete related credits created by this receipt
+    rec_num = receipt['receipt_number']
+    cur.execute("DELETE FROM credits WHERE renter_id=%s AND description LIKE %s",
+                (receipt['renter_id'], f'%Receipt #{rec_num}%'))
+
+    cur.execute("DELETE FROM receipt_items WHERE receipt_id=%s", (receipt_id,))
+    cur.execute("DELETE FROM receipts WHERE id=%s", (receipt_id,))
+    conn.commit()
+    conn.close()
+    flash('Receipt deleted and payment reversed.', 'success')
+    return redirect(url_for('receipts_list'))
 
 
 @app.route('/receipts/<int:receipt_id>/edit', methods=['GET', 'POST'])

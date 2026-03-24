@@ -71,7 +71,12 @@
                             <span class="badge bg-warning text-dark">Pending</span>
                         {% endif %}
                     </td>
-                    <td><a href="{{ url_for('view_receipt', receipt_id=rec.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i> View</a></td>
+                    <td>
+                        <a href="{{ url_for('view_receipt', receipt_id=rec.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye"></i> View</a>
+                        <form method="post" action="{{ url_for('delete_receipt', receipt_id=rec.id) }}" class="d-inline" onsubmit="return confirm('Delete receipt {{ rec.receipt_number }}? This will reverse the payment. This cannot be undone.')">
+                            <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i> Delete</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
