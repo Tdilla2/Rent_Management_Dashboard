@@ -1469,16 +1469,29 @@ def receipts_list():
             total_paid_month = float(pay['amount_paid']) if pay else 0
             fees = float(pay['fees']) if pay else 0
 
-            # Non-rent charges
-            cur.execute('''
-                SELECT COALESCE(SUM(ri.amount), 0) as total
-                FROM receipt_items ri JOIN receipts r2 ON ri.receipt_id = r2.id
-                WHERE r2.renter_id = %s AND r2.month = %s AND r2.receipt_type = 'payment'
-                  AND ri.amount > 0 AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
-            ''', (renter_id, month_name))
-            non_rent = float(cur.fetchone()['total'])
-
-            total_due = monthly_rent + fees + non_rent
+            # If receipt references an invoice, use invoice total as total_due
+            inv_ref = rec.get('invoice_ref') or ''
+            if inv_ref:
+                cur.execute("SELECT id FROM invoices WHERE invoice_number=%s", (inv_ref,))
+                inv = cur.fetchone()
+                if inv:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(qty * unit_price), 0) as total FROM invoice_items WHERE invoice_id=%s",
+                        (inv['id'],)
+                    )
+                    total_due = float(cur.fetchone()['total'])
+                else:
+                    total_due = monthly_rent + fees
+            else:
+                # Non-rent charges
+                cur.execute('''
+                    SELECT COALESCE(SUM(ri.amount), 0) as total
+                    FROM receipt_items ri JOIN receipts r2 ON ri.receipt_id = r2.id
+                    WHERE r2.renter_id = %s AND r2.month = %s AND r2.receipt_type = 'payment'
+                      AND ri.amount > 0 AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
+                ''', (renter_id, month_name))
+                non_rent = float(cur.fetchone()['total'])
+                total_due = monthly_rent + fees + non_rent
             balance = total_due - total_paid_month
             if balance > 0:
                 remaining = balance
@@ -1720,6 +1733,8 @@ def view_receipt(receipt_id):
     total_paid_month = 0.0
     fees_month = 0.0
     non_rent_charges = 0.0
+    invoice_total = 0.0
+    has_invoice = False
     if month_num:
         pay_year = settings['current_year']
         if receipt['payment_date']:
@@ -1738,16 +1753,33 @@ def view_receipt(receipt_id):
             total_paid_month = float(pay['amount_paid'] or 0)
             fees_month = float(pay['fees'] or 0)
 
-        # Sum non-rent charges from ALL receipts this month (keys, deposits, etc.)
-        cur.execute('''
-            SELECT COALESCE(SUM(ri.amount), 0) as total
-            FROM receipt_items ri
-            JOIN receipts r ON ri.receipt_id = r.id
-            WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment'
-              AND ri.amount > 0
-              AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
-        ''', (receipt['renter_id'], month_name))
-        non_rent_charges = float(cur.fetchone()['total'])
+        # If receipt references an invoice, get total due from invoice items
+        invoice_items_list = []
+        if receipt['invoice_ref']:
+            cur.execute("SELECT id FROM invoices WHERE invoice_number=%s", (receipt['invoice_ref'],))
+            inv = cur.fetchone()
+            if inv:
+                cur.execute(
+                    "SELECT description, qty, unit_price FROM invoice_items WHERE invoice_id=%s ORDER BY id",
+                    (inv['id'],)
+                )
+                for ii in cur.fetchall():
+                    amt = float(ii['qty']) * float(ii['unit_price'])
+                    invoice_items_list.append({'description': ii['description'], 'amount': amt})
+                    invoice_total += amt
+                has_invoice = True
+
+        if not has_invoice:
+            # Sum non-rent charges from ALL receipts this month (keys, deposits, etc.)
+            cur.execute('''
+                SELECT COALESCE(SUM(ri.amount), 0) as total
+                FROM receipt_items ri
+                JOIN receipts r ON ri.receipt_id = r.id
+                WHERE r.renter_id = %s AND r.month = %s AND r.receipt_type = 'payment'
+                  AND ri.amount > 0
+                  AND LOWER(ri.description) NOT IN ('rent', 'monthly rent')
+            ''', (receipt['renter_id'], month_name))
+            non_rent_charges = float(cur.fetchone()['total'])
 
     # Get renter's total credit balance from credits table
     cur.execute(
@@ -1756,8 +1788,11 @@ def view_receipt(receipt_id):
     )
     renter_credit_balance = float(cur.fetchone()['total'])
 
-    # Total due = monthly rent + late fees + non-rent charges (keys, deposits, etc.)
-    total_due = monthly_rent + fees_month + non_rent_charges
+    # Total due: use invoice total if available, otherwise rent + fees + non-rent charges
+    if has_invoice:
+        total_due = invoice_total
+    else:
+        total_due = monthly_rent + fees_month + non_rent_charges
 
     conn.close()
     return render_template('receipt_view.html', receipt=receipt, items=items,
@@ -1766,6 +1801,7 @@ def view_receipt(receipt_id):
                            total_due=total_due,
                            fees_month=fees_month, monthly_rent=monthly_rent,
                            renter_credit_balance=renter_credit_balance,
+                           invoice_items=invoice_items_list if has_invoice else None,
                            settings=settings)
 
 

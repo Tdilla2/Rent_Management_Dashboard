@@ -77,6 +77,14 @@
                         <tr>
                             <td colspan="3"><hr class="my-1"></td>
                         </tr>
+                        {% if invoice_items %}
+                        {% for ii in invoice_items %}
+                        <tr>
+                            <td colspan="2" class="text-end">{{ ii.description }} (charged)</td>
+                            <td class="text-end">${{ "{:,.2f}".format(ii.amount) }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
                         <tr>
                             <td colspan="2" class="text-end">Monthly Rent</td>
                             <td class="text-end">${{ "{:,.2f}".format(monthly_rent) }}</td>
@@ -86,6 +94,7 @@
                             <td colspan="2" class="text-end">Fees</td>
                             <td class="text-end">${{ "{:,.2f}".format(fees_month) }}</td>
                         </tr>
+                        {% endif %}
                         {% endif %}
                         <tr>
                             <td colspan="2" class="text-end"><strong>Total Paid This Month</strong></td>
