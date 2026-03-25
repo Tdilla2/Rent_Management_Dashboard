@@ -57,6 +57,8 @@
                             <li><a class="dropdown-item" href="{{ url_for('petty_cash_report') }}"><i class="bi bi-coin"></i> Petty Cash Report</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('closing_statement') }}"><i class="bi bi-file-earmark-check"></i> Monthly Closing Statement</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('account_statement_report') }}"><i class="bi bi-file-earmark-ruled"></i> Account Statements</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('deposit_summary_report') }}"><i class="bi bi-bank"></i> Deposit Summary</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('upcoming_transactions') }}"><i class="bi bi-calendar-week"></i> 7-Day Upcoming</a></li>
                         </ul>
                     </li>
                     <li class="nav-item dropdown">
@@ -64,7 +66,7 @@
                             <i class="bi bi-gear"></i> Settings
                         </a>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('settings_page') }}"><i class="bi bi-sliders"></i> General Settings</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('settings_page') }}"><i class="bi bi-building"></i> Company Info</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('fee_schedule') }}"><i class="bi bi-currency-dollar"></i> Fee Schedule</a></li>
                             {% if g.user and g.user.role == 'admin' %}
                             <li><hr class="dropdown-divider"></li>

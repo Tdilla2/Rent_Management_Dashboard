@@ -72,6 +72,12 @@ def init_db():
         except Exception:
             pass
 
+    # Add new columns to settings table (safe if already exist)
+    try:
+        cur.execute("ALTER TABLE settings ADD COLUMN IF NOT EXISTS company_phone TEXT DEFAULT ''")
+    except Exception:
+        pass
+
     cur.execute('''
         CREATE TABLE IF NOT EXISTS payments (
             id SERIAL PRIMARY KEY,
@@ -2675,6 +2681,115 @@ def account_statement_report():
                            full_months=FULL_MONTHS)
 
 
+# ── 7-DAY UPCOMING TRANSACTIONS ──
+
+@app.route('/reports/upcoming')
+@login_required
+def upcoming_transactions():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+
+    today = date.today()
+    in_7 = today + timedelta(days=7)
+
+    # Find the next 1st of the month that falls within the next 7 days
+    if today.month == 12:
+        next_first = date(today.year + 1, 1, 1)
+    else:
+        next_first = date(today.year, today.month + 1, 1)
+
+    days_until_first = (next_first - today).days
+    due_first_in_window = days_until_first <= 7
+
+    # Also check if today itself is the 1st
+    this_first = date(today.year, today.month, 1)
+    if today == this_first:
+        next_first = this_first
+        days_until_first = 0
+        due_first_in_window = True
+
+    # Get all active renters with their monthly rent
+    cur.execute("SELECT * FROM renters WHERE is_active = TRUE AND monthly_rent > 0 ORDER BY unit")
+    renters = cur.fetchall()
+
+    # For each renter, get how much they've paid this month
+    month_label = next_first.strftime('%B %Y')  # e.g. "April 2026"
+    upcoming = []
+    for r in renters:
+        cur.execute('''
+            SELECT COALESCE(SUM(ri.amount), 0) AS paid
+            FROM receipts
+            JOIN receipt_items ri ON ri.receipt_id = receipts.id
+            WHERE receipts.renter_id = %s
+              AND receipts.month = %s
+              AND receipts.receipt_type = 'payment'
+        ''', (r['id'], month_label))
+        paid = float(cur.fetchone()['paid'])
+        monthly_rent = float(r['monthly_rent'])
+        balance = max(monthly_rent - paid, 0)
+        upcoming.append({
+            'renter_name': r['name'],
+            'unit': r['unit'],
+            'monthly_rent': monthly_rent,
+            'paid': paid,
+            'balance': balance,
+        })
+
+    conn.close()
+    return render_template('upcoming_transactions.html',
+                           upcoming=upcoming, today=today.isoformat(),
+                           next_first=next_first.isoformat(),
+                           days_until_first=days_until_first,
+                           due_first_in_window=due_first_in_window,
+                           month_label=month_label,
+                           settings=settings)
+
+
+# ── DEPOSIT SUMMARY REPORT ──
+
+@app.route('/reports/deposit-summary')
+@login_required
+def deposit_summary_report():
+    conn = get_db()
+    settings = get_settings(conn)
+    cur = conn.cursor()
+    year = request.args.get('year', date.today().year, type=int)
+    month = request.args.get('month', date.today().month, type=int)
+
+    cur.execute('''
+        SELECT receipts.id, receipts.receipt_number, receipts.payment_date,
+               receipts.payment_method, receipts.deposit_date,
+               renters.name AS renter_name, renters.unit,
+               COALESCE(SUM(ri.amount), 0) AS total
+        FROM receipts
+        JOIN renters ON receipts.renter_id = renters.id
+        LEFT JOIN receipt_items ri ON ri.receipt_id = receipts.id
+        WHERE receipts.deposit_confirmed = TRUE
+          AND receipts.deposit_date LIKE %s
+        GROUP BY receipts.id, renters.name, renters.unit
+        ORDER BY receipts.deposit_date ASC, receipts.id ASC
+    ''', (f"{year}-{month:02d}%",))
+    rows = cur.fetchall()
+
+    # Group by deposit date
+    from collections import defaultdict, OrderedDict
+    groups = OrderedDict()
+    for r in rows:
+        d = r['deposit_date']
+        if d not in groups:
+            groups[d] = []
+        groups[d].append(r)
+
+    grand_total = sum(float(r['total']) for r in rows)
+    conn.close()
+    return render_template('deposit_summary_report.html',
+                           groups=groups, grand_total=grand_total,
+                           month=month, year=year, settings=settings,
+                           month_name=FULL_MONTHS[month - 1],
+                           full_months=FULL_MONTHS)
+
+
 # ── SETTINGS ──
 
 @app.route('/settings', methods=['GET','POST'])
@@ -2684,8 +2799,9 @@ def settings_page():
     cur = conn.cursor()
     if request.method == 'POST':
         cur.execute(
-            "UPDATE settings SET company_name=%s, company_address=%s, current_year=%s WHERE id=1",
+            "UPDATE settings SET company_name=%s, company_address=%s, company_phone=%s, current_year=%s WHERE id=1",
             (request.form['company_name'], request.form['company_address'],
+             request.form.get('company_phone', ''),
              int(request.form.get('current_year', 2025)))
         )
         conn.commit()

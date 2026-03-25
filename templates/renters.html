@@ -62,6 +62,9 @@
                         <div class="btn-group">
                             <a href="{{ url_for('manage_payments', renter_id=rd.renter.id, year=year) }}" class="btn btn-sm btn-outline-primary btn-action" title="Payments"><i class="bi bi-cash"></i></a>
                             <a href="{{ url_for('edit_renter', renter_id=rd.renter.id) }}" class="btn btn-sm btn-outline-secondary btn-action" title="Edit"><i class="bi bi-pencil"></i></a>
+                            {% if rd.renter.email %}
+                            <a href="mailto:{{ rd.renter.email }}" class="btn btn-sm btn-outline-info btn-action" title="Email {{ rd.renter.email }}"><i class="bi bi-envelope"></i></a>
+                            {% endif %}
                             <form method="post" action="{{ url_for('toggle_renter_active', renter_id=rd.renter.id) }}" style="display:inline">
                                 <button class="btn btn-sm {{ 'btn-outline-warning' if rd.renter.is_active else 'btn-outline-success' }} btn-action"
                                         title="{{ 'Deactivate' if rd.renter.is_active else 'Activate' }}">

@@ -12,7 +12,7 @@
                     <table class="table table-hover">
                         <thead>
                             <tr>
-                                <th>Fee Type</th>
+                                <th>Item List</th>
                                 <th>Amount ($)</th>
                                 <th>Description</th>
                                 <th class="no-print"></th>
@@ -32,6 +32,7 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-outline-success no-print" onclick="addFeeRow()"><i class="bi bi-plus-lg"></i> Add Fee</button>
                         <button type="submit" class="btn btn-primary no-print"><i class="bi bi-save"></i> Save</button>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary no-print"><i class="bi bi-x-lg"></i> Cancel</a>
                     </div>
                 </form>
             </div>
