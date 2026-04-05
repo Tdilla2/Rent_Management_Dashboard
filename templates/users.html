@@ -10,6 +10,7 @@
             </div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('add_user') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Username</label>
                         <input type="text" name="username" class="form-control" required
@@ -88,6 +89,7 @@
                                     {% if user.id != g.user.id %}
                                     <!-- Toggle Active -->
                                     <form method="POST" action="{{ url_for('toggle_user', user_id=user.id) }}" class="d-inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm {{ 'btn-outline-warning' if user.is_active else 'btn-outline-success' }}"
                                                 title="{{ 'Deactivate' if user.is_active else 'Activate' }}">
                                             <i class="bi {{ 'bi-pause-circle' if user.is_active else 'bi-play-circle' }}"></i>
@@ -103,6 +105,7 @@
                                     <!-- Delete -->
                                     <form method="POST" action="{{ url_for('delete_user', user_id=user.id) }}" class="d-inline"
                                           onsubmit="return confirm('Delete user {{ user.username }}? This cannot be undone.')">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                             <i class="bi bi-trash"></i>
                                         </button>
@@ -113,6 +116,7 @@
                                         <div class="modal-dialog modal-sm">
                                             <div class="modal-content">
                                                 <form method="POST" action="{{ url_for('reset_user_password', user_id=user.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                     <div class="modal-header">
                                                         <h6 class="modal-title">Reset password for {{ user.username }}</h6>
                                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

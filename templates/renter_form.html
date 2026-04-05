@@ -9,6 +9,7 @@
             </div>
             <div class="card-body">
                 <form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <h6 class="fw-bold mb-3">Primary Leaseholder</h6>
                     <div class="row g-3">
                         <div class="col-md-6">
@@ -67,6 +68,7 @@
             <div class="card-body">
                 <!-- Upload Form -->
                 <form method="post" action="{{ url_for('upload_document', renter_id=renter.id) }}" enctype="multipart/form-data" class="mb-4">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-3">
                             <label class="form-label">Document Type</label>
@@ -141,6 +143,7 @@
                                     </a>
                                     <form method="post" action="{{ url_for('delete_document', doc_id=doc.id) }}"
                                           onsubmit="return confirm('Delete this document?');" style="display:inline;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                     </form>
                                 </div>

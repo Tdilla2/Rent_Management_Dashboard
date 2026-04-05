@@ -1,10 +1,12 @@
 import os
+import re
 import functools
 import secrets
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session, g
+from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import uuid
@@ -23,10 +25,16 @@ if not _secret_key:
     _secret_key = secrets.token_hex(32)
     print('[WARN] SECRET_KEY not set — using a random ephemeral key (dev only).')
 app.secret_key = _secret_key
+
+csrf = CSRFProtect(app)
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload limit
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
 
-S3_BUCKET = os.environ.get('S3_DOCUMENTS_BUCKET', 'rent-mgmt-documents-130423149110')
+S3_BUCKET = os.environ.get('S3_DOCUMENTS_BUCKET')
+if not S3_BUCKET:
+    if os.environ.get('FLASK_ENV') == 'production' or os.environ.get('AWS_EXECUTION_ENV'):
+        raise RuntimeError('S3_DOCUMENTS_BUCKET environment variable must be set.')
+    print('[WARN] S3_DOCUMENTS_BUCKET not set — document upload features will fail.')
 s3_client = boto3.client('s3', region_name='us-east-1')
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'xlsx', 'xls', 'csv'}
 
@@ -73,12 +81,23 @@ def init_db():
         )
     ''')
     # Add new columns to renters table (safe if already exist)
+    # Validate identifiers — only allow simple snake_case names to avoid
+    # any possibility of SQL injection through DDL interpolation.
+    _ident_re = re.compile(r'^[a-z_][a-z0-9_]{0,62}$')
+    _allowed_coldefs = {
+        "TEXT DEFAULT ''",
+        'BOOLEAN DEFAULT TRUE',
+        'BOOLEAN DEFAULT FALSE',
+        "NUMERIC(10,2) DEFAULT 0",
+    }
     for col, coldef in [
         ('co_leaser', "TEXT DEFAULT ''"),
         ('co_leaser_email', "TEXT DEFAULT ''"),
         ('co_leaser_phone', "TEXT DEFAULT ''"),
         ('is_active', 'BOOLEAN DEFAULT TRUE'),
     ]:
+        if not _ident_re.match(col) or coldef not in _allowed_coldefs:
+            continue
         try:
             cur.execute(f"ALTER TABLE renters ADD COLUMN IF NOT EXISTS {col} {coldef}")
         except Exception:

@@ -66,12 +66,14 @@
                             <a href="mailto:{{ rd.renter.email }}" class="btn btn-sm btn-outline-info btn-action" title="Email {{ rd.renter.email }}"><i class="bi bi-envelope"></i></a>
                             {% endif %}
                             <form method="post" action="{{ url_for('toggle_renter_active', renter_id=rd.renter.id) }}" style="display:inline">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button class="btn btn-sm {{ 'btn-outline-warning' if rd.renter.is_active else 'btn-outline-success' }} btn-action"
                                         title="{{ 'Deactivate' if rd.renter.is_active else 'Activate' }}">
                                     <i class="bi {{ 'bi-pause-circle' if rd.renter.is_active else 'bi-play-circle' }}"></i>
                                 </button>
                             </form>
                             <form method="post" action="{{ url_for('delete_renter', renter_id=rd.renter.id) }}" style="display:inline" onsubmit="return confirm('Delete this renter and all their records?')">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button class="btn btn-sm btn-outline-danger btn-action" title="Delete"><i class="bi bi-trash"></i></button>
                             </form>
                         </div>

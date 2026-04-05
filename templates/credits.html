@@ -118,6 +118,7 @@
                     <td class="no-print">
                         <form method="post" action="{{ url_for('delete_credit', credit_id=cr.id) }}"
                               onsubmit="return confirm('Delete this credit?');" style="display:inline;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                         </form>
                     </td>
@@ -147,6 +148,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form method="post" action="{{ url_for('add_credit') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-body">
                     <div class="row g-3">
                         <div class="col-md-6">

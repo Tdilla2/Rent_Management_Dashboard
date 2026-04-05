@@ -132,6 +132,7 @@
             {% if not (invoice.late_fee_day6_applied and invoice.late_fee_day10_applied) %}
             <form method="post" action="{{ url_for('apply_late_fees', invoice_id=invoice.id) }}" style="display:inline;"
                   onsubmit="return confirm('Apply late fees to this invoice based on today\'s date?');">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="btn btn-warning">
                     <i class="bi bi-percent"></i> Apply Late Fees
                     {% if days_overdue >= 5 and not invoice.late_fee_day6_applied %}
@@ -162,6 +163,7 @@
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <form method="post" action="{{ url_for('apply_credit_to_invoice', invoice_id=invoice.id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="modal-body">
                             <p>Apply credit from <strong>{{ invoice.name }}</strong>'s balance toward this invoice.</p>
                             <div class="row g-3">
@@ -200,6 +202,7 @@
             </div>
             <div class="card-body">
                 <form method="post" action="{{ url_for('upload_invoice_document', invoice_id=invoice.id) }}" enctype="multipart/form-data" class="mb-3">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="row g-2 align-items-end">
                         <div class="col-md-4">
                             <label class="form-label small">Description <span class="text-muted">(optional)</span></label>
@@ -242,6 +245,7 @@
                                     </a>
                                     <form method="post" action="{{ url_for('delete_invoice_document', doc_id=doc.id) }}"
                                           onsubmit="return confirm('Delete this document?');" style="display:inline;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                                     </form>
                                 </div>

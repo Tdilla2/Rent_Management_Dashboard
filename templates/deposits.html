@@ -41,6 +41,7 @@
                     <td class="text-end"><strong>${{ "{:,.2f}".format(rec.total) }}</strong></td>
                     <td class="no-print">
                         <form method="post" action="{{ url_for('confirm_deposit', receipt_id=rec.id) }}" class="d-flex gap-2 align-items-center">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="date" name="deposit_date" class="form-control form-control-sm" value="{{ today }}" style="max-width:150px;">
                             <button type="submit" class="btn btn-sm btn-success">
                                 <i class="bi bi-check-lg"></i> Confirm
@@ -92,6 +93,7 @@
                     <td class="no-print">
                         <form method="post" action="{{ url_for('unconfirm_deposit', receipt_id=rec.id) }}"
                               onsubmit="return confirm('Remove deposit confirmation?');" style="display:inline;">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-sm btn-outline-secondary">Undo</button>
                         </form>
                     </td>

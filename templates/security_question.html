@@ -19,6 +19,7 @@
                 {% endif %}
 
                 <form method="POST">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
                         <label class="form-label fw-semibold">Security Question</label>
                         <select name="security_question" class="form-select" id="questionSelect" onchange="toggleCustom()">

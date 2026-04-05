@@ -14,6 +14,7 @@
                     <strong class="ms-3">Email:</strong> {{ renter.email }}
                 </div>
                 <form method="post">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="year" value="{{ year }}">
                     <table class="table table-hover">
                         <thead>
