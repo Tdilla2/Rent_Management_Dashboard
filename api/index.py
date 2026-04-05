@@ -1,5 +1,6 @@
 import os
 import functools
+import secrets
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, date, timedelta
@@ -10,7 +11,18 @@ import uuid
 import boto3
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+
+_secret_key = os.environ.get('SECRET_KEY')
+if not _secret_key:
+    if os.environ.get('FLASK_ENV') == 'production' or os.environ.get('AWS_EXECUTION_ENV'):
+        raise RuntimeError(
+            'SECRET_KEY environment variable must be set in production. '
+            'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
+        )
+    # Dev-only: generate an ephemeral random key so sessions can't be forged
+    _secret_key = secrets.token_hex(32)
+    print('[WARN] SECRET_KEY not set — using a random ephemeral key (dev only).')
+app.secret_key = _secret_key
 app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5 MB upload limit
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=10)
 
@@ -226,10 +238,22 @@ def init_db():
     # Seed default admin user if no users exist
     cur.execute("SELECT COUNT(*) as count FROM users")
     if cur.fetchone()['count'] == 0:
-        admin_hash = generate_password_hash('admin123')
+        admin_username = os.environ.get('INITIAL_ADMIN_USERNAME', 'admin')
+        admin_password = os.environ.get('INITIAL_ADMIN_PASSWORD')
+        if not admin_password:
+            # Generate a strong random password and log it once for the operator
+            admin_password = secrets.token_urlsafe(16)
+            print('=' * 70)
+            print('[SECURITY] No INITIAL_ADMIN_PASSWORD env var set.')
+            print(f'[SECURITY] Generated admin user: {admin_username}')
+            print(f'[SECURITY] Generated admin password: {admin_password}')
+            print('[SECURITY] SAVE THIS NOW — it will not be shown again.')
+            print('[SECURITY] Change it immediately after first login.')
+            print('=' * 70)
+        admin_hash = generate_password_hash(admin_password)
         cur.execute(
             "INSERT INTO users (username, password_hash, display_name, role) VALUES (%s, %s, %s, %s)",
-            ('admin', admin_hash, 'Administrator', 'admin')
+            (admin_username, admin_hash, 'Administrator', 'admin')
         )
 
     # Seed default fee schedule if empty

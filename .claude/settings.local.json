@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(pip3 --version)",
+      "Read(//c/Users/thoma/AppData/Local/Programs/**)",
+      "Bash(ls /c/Python*)",
+      "Read(//c/Users/thoma/AppData/Roaming//**)",
+      "Bash(aws ec2:*)",
+      "Bash(aws rds:*)",
+      "Bash(gh --version)",
+      "Bash(git -C \"c:/Users/thoma/Downloads/renter manager/Rent_Management_Dashboard\" remote -v)",
+      "Bash(aws iam:*)",
+      "Bash(aws apprunner:*)"
+    ]
+  }
+}

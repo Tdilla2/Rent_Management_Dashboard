@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -m pip install flask psycopg2-binary werkzeug)",
+      "Bash(\"/c/Users/thoma/AppData/Local/Programs/Python/Python312/python.exe\" --version)",
+      "Bash(\"/c/Python312/python.exe\" --version)",
+      "Bash(\"/c/Python311/python.exe\" --version)"
+    ]
+  }
+}
